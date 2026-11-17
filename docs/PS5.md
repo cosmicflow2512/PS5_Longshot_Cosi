@@ -124,6 +124,11 @@ another place), `ps5/build.py` compiles its generator into the renderer and puts
 `RX_VK_MIHAWKGEN=0` or without the checkout, the renderer's own interpolation does. FSR 3.1's frame generation is off on the
 console (`RX_VK_FSR_FG=0`). PS5_MihawkGen is GPL-3.0-or-later, as this repository is.
 
+The menu's Frame generation by row chooses who makes the frames on the console: the renderer's own interpolation
+(Built-in FG) or PS5_MihawkGen's network (MihawkGen, the default). The network is loaded only where the row names it, so
+the renderer's own leaves its memory to the game; a change of the row applies at once. The row and the FPS counter say
+"MihawkGen FG" when the network made the frames, at the Frame generation row's Auto too.
+
 ## Open questions
 
 - **The foliage fault's cause.** `minStorageBufferOffsetAlignment` is 4 on the console; the culling pass that left one of the

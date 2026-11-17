@@ -296,6 +296,7 @@ inline constexpr Entry kpt_BR[] = {
     {"Menu size", "Tamanho do menu"},
     {"Microphone", "Microfone"},
     {"Middle click", "Clique do meio"},
+    {"MihawkGen's network did not load (framegen/network.fgw): the built-in one makes the frames.", "A rede do MihawkGen não carregou (framegen/network.fgw): a integrada gera os quadros."},
     {"Minimum (4GB)", "Mínimo (4GB)"},
     {"Minus", "Menos"},
     {"Monitor's shape", "Formato do monitor"},
@@ -373,6 +374,7 @@ inline constexpr Entry kpt_BR[] = {
     {"Output resolution", "Resolução de saída"},
     {"Overridden by HOS_AUDIO_DEVICE", "Substituído por HOS_AUDIO_DEVICE"},
     {"Overworld", "Mundo"},
+    {"PS5_MihawkGen's trained network, from the finished picture. Above 3x the built-in one makes the frames.", "A rede treinada do PS5_MihawkGen, a partir da imagem final. Acima de 3x quem gera os quadros é a integrada."},
     {"Page %d of %d", "Página %d de %d"},
     {"Paste", "Colar"},
     {"Per frame", "Por quadro"},
@@ -7348,7 +7350,7 @@ inline constexpr Entry kzh_Hant[] = {
 };
 inline constexpr Lang kLangs[] = {
     {"en", "English", nullptr, 0},
-    {"pt-BR", "Português (Brasil)", kpt_BR, 562},
+    {"pt-BR", "Português (Brasil)", kpt_BR, 564},
     {"es-419", "Español (Latinoamérica)", kes_419, 563},
     {"es", "Español (España)", kes, 565},
     {"fr", "Français", kfr, 560},

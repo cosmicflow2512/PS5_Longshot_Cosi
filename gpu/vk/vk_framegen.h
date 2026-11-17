@@ -12,8 +12,11 @@ bool framegen_on();
 bool framegen_record(VkCommandBuffer cmd, VkImageView src, uint32_t sw, uint32_t sh, const int crop[4], bool native_pq);
 /// (longshot) Who made the made frames of the sets shown lately (the last 64, about a second at 60): what the Insert menu's
 /// Frame generation by row and the FPS counter name. None: none made (Off, nothing to blend from, none for half a second)
-enum class FgMaker { None, BuiltIn, Dlss, Fsr3 };
+enum class FgMaker { None, BuiltIn, Dlss, Fsr3, Mihawk };   // (the last: the console's network, fg_by.h)
 FgMaker framegen_maker();
+/// (PS5) The generator the Frame generation by row names was asked for and is not there (no network file): the
+/// renderer's own makes the frames, and the row's line says so
+bool framegen_by_missing();
 /// The first frame the last framegen_record made (null when it made none), w x h, GENERAL
 VkImage framegen_made_image(uint32_t* w, uint32_t* h);
 /// After that recording's submit (value): the display thread shows its frames
