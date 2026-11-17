@@ -487,6 +487,8 @@ inline constexpr Entry kpt_BR[] = {
     {"The best dedicated GPU.", "A melhor GPU dedicada."},
     {"The brightest highlights with HDR on: set it to your display's peak brightness.", "Os realces mais brilhantes com HDR ligado: ajuste para o brilho máximo da sua tela."},
     {"The button icons the game shows, in its texts and menus: those of this controller, for the buttons your controls put each action on.", "Os ícones de botões que o jogo mostra nos textos e menus: os deste controle, para os botões onde seus controles põem cada ação."},
+    {"The console's memory is short: the built-in one makes the frames until there is memory to spare again.", "A memória do console está curta: a integrada gera os quadros até voltar a sobrar memória."},
+    {"The console's memory is very short: no frames are made until there is memory to spare again.", "A memória do console está muito curta: a geração de quadros fica desligada até voltar a sobrar memória."},
     {"The corner the FPS counter shows in. While this menu is open it shows at the top right.", "O canto em que o contador de FPS aparece. Com este menu aberto, ele aparece no canto superior direito."},
     {"The driver delays each frame's start for less latency.", "O driver atrasa o início de cada quadro para reduzir a latência."},
     {"The driver paces the frames for less latency.", "O driver controla o ritmo dos quadros para reduzir a latência."},
@@ -7350,7 +7352,7 @@ inline constexpr Entry kzh_Hant[] = {
 };
 inline constexpr Lang kLangs[] = {
     {"en", "English", nullptr, 0},
-    {"pt-BR", "Português (Brasil)", kpt_BR, 564},
+    {"pt-BR", "Português (Brasil)", kpt_BR, 566},
     {"es-419", "Español (Latinoamérica)", kes_419, 563},
     {"es", "Español (España)", kes, 565},
     {"fr", "Français", kfr, 560},

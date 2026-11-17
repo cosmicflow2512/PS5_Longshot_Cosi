@@ -17,6 +17,10 @@ FgMaker framegen_maker();
 /// (PS5) The generator the Frame generation by row names was asked for and is not there (no network file): the
 /// renderer's own makes the frames, and the row's line says so
 bool framegen_by_missing();
+/// (PS5) The console's memory is short and the renderer's own makes the frames in place of the row's generator
+bool framegen_by_short();
+/// (PS5) Frame generation's step for the memory left: 0 the row's generator, 1 the renderer's own, 2 none (fg_by.h level_next)
+int framegen_memory_level();
 /// The first frame the last framegen_record made (null when it made none), w x h, GENERAL
 VkImage framegen_made_image(uint32_t* w, uint32_t* h);
 /// After that recording's submit (value): the display thread shows its frames

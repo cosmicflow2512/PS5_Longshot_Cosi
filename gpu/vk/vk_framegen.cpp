@@ -60,6 +60,10 @@
 
 namespace mkwvk {
 int display_refresh_mhz();   // (vk_main.cpp: the window's display, mHz; outside the unnamed namespace, where it is defined)
+#ifdef __PROSPERO__
+extern "C" uint64_t hos_ps5_direct_room(void);   // (host/ps5/win32_ps5.c: the title's free direct memory in all)
+uint64_t ps5_tex_reserve();                      // (vk_texture.cpp: what is kept free for the game)
+#endif
 extern std::atomic<uint32_t> present_kind;   // (vk_replay.cpp: the frame log's)
 namespace {
 
@@ -443,6 +447,8 @@ void drop_size() {
     fg.recorded = nullptr;
 }
 
+bool by_short = false;   // (PS5: memory is short, the renderer's own in place of the row's generator; the menu reads it)
+std::atomic<int> memory_level{0};   // (PS5: fg_by::level_next's step, 0 to 2; framegen_on asks, the menu reads it)
 bool ensure_size(VkCommandBuffer cmd, uint32_t w, uint32_t h) {
     // (PS5: the Frame generation by row too. The network is made where the row names it and let go with the rest below,
     // so a change of the row to the renderer's own frees its images)
@@ -456,7 +462,13 @@ bool ensure_size(VkCommandBuffer cmd, uint32_t w, uint32_t h) {
         if (!cycle_next) cycle_next = t + cycle;
         else if (t >= cycle_next) cycle_next = t + cycle, opts.framegen_by = opts.framegen_by >= fg_by::kMost ? fg_by::kLeast : fg_by::step_over(opts.framegen_by + 1, 1);
     }
-    const int by = fg_by::known(std::clamp(opts.framegen_by, 0, (int)fg_by::kMost));
+    int by = fg_by::known(std::clamp(opts.framegen_by, 0, (int)fg_by::kMost));
+#ifdef __PROSPERO__
+    // (the console's memory short: the renderer's own, which holds no images of its own, in place of the network or the
+    // chain, whichever the row names: memory_level, below)
+    by_short = memory_level.load(std::memory_order_relaxed) >= 1 && by != fg_by::kBuiltIn;
+    if (by_short) by = fg_by::kBuiltIn;
+#endif
 #else
     const int by = 0;
 #endif
@@ -788,6 +800,8 @@ FgMaker framegen_maker() {
     return best;
 }
 
+bool framegen_by_short() { return by_short; }
+
 bool framegen_by_missing() {   // (the menu's thread: a flag and a pointer the replay thread sets, read as they are)
 #ifdef HOOKSHOT_MIHAWKGEN
     if (fg.by == fg_by::kMihawk) return neural.tried && !neural.ctx;
@@ -802,10 +816,69 @@ bool framegen_wanted(int menu_value, int allow) {
     return allow && menu_value >= 1;   // (1: Auto)
 }
 
+#ifdef __PROSPERO__
+/// (PS5) The step frame generation is at for the memory left (fg_by::level_next), asked every 120 calls (60 presents) on
+/// the replay thread. The line is the textures' reserve (vk_texture.cpp ps5_tex_reserve); RX_VK_FG_AUTO_ROOM_MB=<n> is
+/// another and RX_VK_FG_LEVEL_CYCLE=<seconds> goes through the steps by the clock, both for a test
+static void memory_level_tick() {
+    static const uint64_t line =
+        getenv("RX_VK_FG_AUTO_ROOM_MB") ? (uint64_t)atoll(getenv("RX_VK_FG_AUTO_ROOM_MB")) << 20 : ps5_tex_reserve();
+    static const int64_t cycle =
+        getenv("RX_VK_FG_LEVEL_CYCLE") ? (int64_t)atoi(getenv("RX_VK_FG_LEVEL_CYCLE")) * 1000000000 : 0;
+    static int64_t cycle_next = 0;
+    static int asked = 0;
+    const int level = memory_level.load(std::memory_order_relaxed);
+    int next = level;
+    uint64_t room = 0;
+    if (cycle > 0) {
+        const int64_t t = now_ns();
+        if (!cycle_next) cycle_next = t + cycle;
+        else if (t >= cycle_next) cycle_next = t + cycle, next = (level + 1) % 3, room = hos_ps5_direct_room();
+    } else if (asked++ % 120 == 0) {
+        room = hos_ps5_direct_room();
+        static int ups = 0;
+        next = fg_by::level_held(level, room, line, &ups);
+    }
+    if (next == level) return;
+    static const char* const names[] = {"the row's generator", "the built-in one, memory is short", "off, memory is very short"};
+    logf("vk: frame interpolation by the memory left: %s (%llu MiB free)", names[next], (unsigned long long)(room >> 20));
+    memory_level.store(next, std::memory_order_relaxed);
+}
+
+/// (PS5) Off, by the menu or by the memory left: its frames' images and its generator go back to the console's memory (they
+/// stayed for good, about 250 MiB at 3840x2160). As ensure_size before it makes them again: the display thread done with
+/// the sets, every queue idle
+static void release_when_off() {
+    if (!fg.w && !fg.h) return;
+    {
+        std::unique_lock lk(fg.mu);
+        fg.cv.wait(lk, [] { return fg.jobs.empty() && !fg.sets[0].busy && !fg.sets[1].busy && !fg.sets[2].busy; });
+    }
+    {
+        std::lock_guard qk(dev.present_mu);
+        device_wait_idle_locked();
+    }
+    const uint32_t w = fg.w, h = fg.h;
+    drop_size();
+    fg.by = -1;
+    logf("vk: frame interpolation: off, its images (%ux%u) let go", w, h);
+}
+#endif
+
 bool framegen_on() {
     static const int allow = !getenv("RX_VK_FRAMEGEN") || atoi(getenv("RX_VK_FRAMEGEN")) != 0;
-    return framegen_wanted(opts.framegen, allow) && !dev.offscreen && !fg.failed;
+    const bool wanted = framegen_wanted(opts.framegen, allow) && !dev.offscreen && !fg.failed;
+#ifdef __PROSPERO__
+    if (wanted) memory_level_tick();
+    if (!wanted || memory_level.load(std::memory_order_relaxed) >= 2) {
+        if (fg.init) release_when_off();
+        return false;
+    }
+#endif
+    return wanted;
 }
+
+int framegen_memory_level() { return memory_level.load(std::memory_order_relaxed); }
 
 // Ultrawide's menus (the Insert menu's Ultrawide menus): which of nx2/oot_wide.py's keep-list screens keep the whole picture, told
 // to the game's side each present, and, while a menu shows, the sides of the middle 16:9 to show out of focus (1)

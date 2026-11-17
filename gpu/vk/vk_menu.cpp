@@ -1067,7 +1067,9 @@ MENU_HINTS(hn_gpu, 0, "The best dedicated GPU.")
 /// Frame generation: how many frames are made for each of the game's
 const char* hn_framegen(int v, int variant) {
 #ifdef __PROSPERO__   // (the console: what each value does to the game's own rate there, as its name says: tx_framegen)
+    if (v >= 1 && variant == 1) return "The console's memory is very short: no frames are made until there is memory to spare again.";
     if (variant > 0) return nullptr;
+    if (v >= 1 && variant < 0 && framegen_memory_level() >= 2) return "The console's memory is very short: no frames are made until there is memory to spare again.";
     if (v == 1) return "The game runs at its own rate, and frames are made only for the display's refreshes it does not reach: the least input delay.";
     if (v >= 2) {
         static char h[9][160];
@@ -1150,8 +1152,9 @@ const char* hn_framegen_by(int v, int variant) {
     };
     v = fg_by::known(std::clamp(v, (int)fg_by::kLeast, (int)fg_by::kMost));
     if (variant == 0) return ps5[v];
-    if (variant > 0) return variant == 1 ? missing[v] : nullptr;
-    return missing[v] && opts.framegen >= 1 && framegen_by_missing() ? missing[v] : ps5[v];
+    if (variant > 0) return !missing[v] ? nullptr : variant == 1 ? missing[v] : variant == 2 ? "The console's memory is short: the built-in one makes the frames until there is memory to spare again." : nullptr;
+    if (!missing[v] || opts.framegen < 1) return ps5[v];
+    return framegen_by_short() ? "The console's memory is short: the built-in one makes the frames until there is memory to spare again." : framegen_by_missing() ? missing[v] : ps5[v];
 #endif
     static const char* const t[] = {
         "NVIDIA DLSS Frame Generation where it runs (RTX 40 and newer, with the Upscaler's depth and motion), else the "

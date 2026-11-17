@@ -1,5 +1,5 @@
 // (PS5) The Frame generation by row on the console: which of its generators makes a set's frames. Nothing of Vulkan here:
-// tests/test_ps5_framegen_by.py compiles it alone.
+// the tests/test_ps5_framegen_*.py compile it alone.
 #pragma once
 
 namespace mkwvk::fg_by {
@@ -27,5 +27,28 @@ constexpr const char* name(int by) {
 /// PS5_MihawkGen's network is asked for: at its own value, and at the PC's Auto (a console's file from before the
 /// row had its values). At the renderer's own it is not loaded: its images are the game's memory then
 constexpr bool wants_network(int by) { return by == kAuto || by == kMihawk; }
+
+/// Frame generation by the memory left on the console, three steps: 0 the row's generator, 1 the renderer's own (it holds
+/// no images of its own: the light one), 2 none (its frames' images are let go). level: as it is; room: the console's free
+/// memory; line: what is kept for the game (the textures' reserve). Down to 1 under the line and to 2 under half of it;
+/// up from 2 at the line and from 1 at twice the line, a step at a time: what a step up takes again (the frames' images,
+/// about a quarter of the line at 3840x2160; a generator's, less) leaves it above the line it would go down at.
+/// Up from none at one and a half times the line. A step up is taken only once it was asked kUpHold times running
+/// (level_held): in Hyrule Castle the free memory went between 460 and 1130 MiB within seconds as the driver's buffers
+/// came and went, and the frames went off and on with it, a hitch each time
+inline constexpr int kUpHold = 10;
+/// level_next with the wait for a step up: *ups counts the askings in a row that wanted one
+constexpr int level_next(int level, unsigned long long room, unsigned long long line);
+constexpr int level_held(int level, unsigned long long room, unsigned long long line, int* ups) {
+    const int next = level_next(level, room, line);
+    if (next >= level) return *ups = 0, next;   // (down, or as it is: at once)
+    return ++*ups >= kUpHold ? (*ups = 0, next) : level;
+}
+constexpr int level_next(int level, unsigned long long room, unsigned long long line) {
+    if (room < line / 2) return 2;
+    if (level >= 2) return room >= line + line / 2 ? 1 : 2;
+    if (level == 1) return room >= line * 2 ? 0 : 1;
+    return room < line ? 1 : 0;
+}
 
 }   // namespace mkwvk::fg_by

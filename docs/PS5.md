@@ -129,6 +129,13 @@ The menu's Frame generation by row chooses who makes the frames on the console: 
 the renderer's own leaves its memory to the game; a change of the row applies at once. The row and the FPS counter say
 "MihawkGen FG" when the network made the frames, at the Frame generation row's Auto too.
 
+Frame generation steps down with the console's free memory, whatever the row names. Under the textures' reserve
+(`HOS_PS5_TEX_RESERVE_MB`, 1024 MiB) the renderer's own makes the frames, and under half of it none are made and
+their images go back to the console (about 256 MiB at 3840x2160). It steps up one step at a time, from none at one and
+a half times the reserve and to the row's generator at twice it, once the memory has stayed there for ten askings
+(about ten seconds at 60 fps), so memory that comes and goes does not turn the frames on and off. Off in the menu
+gives the images back too. The rows' lines say when memory has stepped it down.
+
 ## Open questions
 
 - **The foliage fault's cause.** `minStorageBufferOffsetAlignment` is 4 on the console; the culling pass that left one of the
