@@ -149,6 +149,20 @@ int64_t nup_romfs_find(const char *path, int *is_dir, uint64_t *size) {
     while (*rel == '/') rel++;
     size_t n = strlen(rel);
     while (n && rel[n - 1] == '/') n--;
+    /* (fix, voices) the game asks its voice streams with a doubled separator (Voice/Resource//Stream):
+       the walk's canonical paths have one, and the hash below is over the whole string, so an internal
+       '//' never matches: every voice .bwav answers "not found" and the dubbing is silent (the same
+       doubled separator drops the voices on Windows long paths, Longshot issues #1298 and #982).
+       Collapse runs of '/' before the lookup, as the console's own fs does. */
+    char norm[4096];
+    size_t m = 0;
+    if (n < sizeof norm) {
+        for (size_t i = 0; i < n; i++) {
+            if (rel[i] == '/' && m && norm[m - 1] == '/') continue;
+            norm[m++] = rel[i];
+        }
+        rel = norm, n = m;
+    }
     uint32_t node;
     if (!n) {
         node = romfs_dir;
