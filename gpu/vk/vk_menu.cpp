@@ -1099,12 +1099,14 @@ const char* framegen_maker_name() {
     case FgMaker::Fsr3: return "FSR 3.1 FG";
     case FgMaker::BuiltIn: return "Built-in FG";
     case FgMaker::Mihawk: return "MihawkGen FG";
+    case FgMaker::Lossless: return "Lossless Scaling FG";
     default: return nullptr;
     }
 }
 /// Frame generation by: at Auto, who makes the frames now, so a player sees whether DLSS Frame Generation runs
 const char* tx_framegen_by(int v) {
-    if (v == fg_by::kMihawk) return "MihawkGen";   // (PS5's own: fg_by::kMost)
+    if (v == fg_by::kMihawk) return "MihawkGen";   // (PS5's two: fg_by::kMost)
+    if (v == fg_by::kLossless) return "Lossless Scaling";
     const char* who = v ? nullptr : framegen_maker_name();
     if (!who) return v ? "Built-in FG" : "Auto";
     static char b[40];
@@ -1145,10 +1147,12 @@ const char* hn_framegen_by(int v, int variant) {
         "The renderer's own: made from the finished picture alone.",
         nullptr,   // (2: FSR 3.1 FG's in upstream, not a value here: fg_by.h)
         "PS5_MihawkGen's trained network, from the finished picture. Above 3x the built-in one makes the frames.",
+        "Lossless Scaling's frame generation, with the shaders of your own Lossless.dll. Above 4x the built-in one makes the frames.",
     };
     static const char* const missing[] = {
         nullptr, nullptr, nullptr,
         "MihawkGen's network did not load (framegen/network.fgw): the built-in one makes the frames.",
+        "No Lossless.dll was read from the game's lossless folder: MihawkGen or the built-in one makes the frames.",
     };
     v = fg_by::known(std::clamp(v, (int)fg_by::kLeast, (int)fg_by::kMost));
     if (variant == 0) return ps5[v];
@@ -5018,11 +5022,13 @@ void menu_init() {
     for (auto& count : item_counts) count.store(-1, std::memory_order_relaxed);
 #ifdef __PROSPERO__
     // (PS5: the Frame generation by row is the console's generators there, fg_by.h. The table has the PC's row as it is
-    // written; its range and its help are set here, before the options file is read)
+    // written; its range and its help are set here, before the options file is read. Lossless Scaling's frames are read
+    // from the player's own Lossless.dll: without the file the row does not offer them, a value that could only leave the
+    // frames to another generator, and a file's choice of it is read as PS5_MihawkGen's, the end of the row's range)
     for (Row& r : rows)
         if (r.value == &opts.framegen_by) {
-            r.lo = fg_by::kLeast, r.hi = fg_by::kMost;
-            r.help = "Who makes the frames. Changes at once.";
+            r.lo = fg_by::kLeast, r.hi = framegen_lossless_file() ? fg_by::kMost : fg_by::kMihawk;
+            r.help = "Who makes the frames. Lossless Scaling's is offered with your own Lossless.dll in the game's lossless folder. Changes at once.";
         }
 #endif
     bool has_options = false;

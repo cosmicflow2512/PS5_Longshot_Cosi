@@ -136,6 +136,21 @@ a half times the reserve and to the row's generator at twice it, once the memory
 (about ten seconds at 60 fps), so memory that comes and goes does not turn the frames on and off. Off in the menu
 gives the images back too. The rows' lines say when memory has stepped it down.
 
+### Lossless Scaling's frame generation
+
+With the player's own `Lossless.dll` (from Lossless Scaling, which is not part of this repository and is not
+distributed with it) the Frame generation by row also offers Lossless Scaling: its frame generation's compute
+shaders are read from that file at run time and run on the console's GPU. The file goes in a `lossless` folder in
+the title's folder (`/data/homebrew/PPSA99025/lossless/Lossless.dll`); ProsperoEden's own
+(`/data/prosperoeden/user/lossless/`) is looked in after it, and `RX_VK_LSFG_DIR` names another place first. Without
+the file the row does not show the value. It makes the frames of 2x to 4x and of Auto; above 4x the renderer's own
+does.
+
+The code is in `gpu/vk/lsfg`: 26 files from [PS5SX2](https://github.com/Swordpdf/PS5SX2)
+(`ps5/coreorbis/orbis-shims/lsfg`, GPL-3.0-or-later), which took them from the Eden emulator, which took them from
+[lsfg-vk](https://github.com/PancakeTAS/lsfg-vk). `gpu/vk/lsfg/PROVENANCE.md` has the revisions and what was changed
+here. Not built on Windows or Linux: `ps5/build.py` alone compiles the folder.
+
 ## Open questions
 
 - **The foliage fault's cause.** `minStorageBufferOffsetAlignment` is 4 on the console; the culling pass that left one of the

@@ -285,6 +285,7 @@ inline constexpr Entry kpt_BR[] = {
     {"Load a save to edit the inventory.", "Carregue um salvamento para editar o inventário."},
     {"Load a save to edit this item.", "Carregue um salvamento para editar este item."},
     {"Locked", "Bloqueado"},
+    {"Lossless Scaling's frame generation, with the shaders of your own Lossless.dll. Above 4x the built-in one makes the frames.", "A geração de quadros do Lossless Scaling, com os shaders do seu próprio Lossless.dll. Acima de 4x quem gera os quadros é a integrada."},
     {"Low", "Baixa"},
     {"Low (6GB)", "Baixo (6GB)"},
     {"Makes frames between the game's own, for smoother motion, at a little input delay. Fast motion or camera cuts can show artifacts.", "Gera quadros entre os do jogo, para um movimento mais fluido, com um pouco de atraso nos comandos. Movimento rápido ou cortes de câmera podem mostrar artefatos."},
@@ -335,6 +336,7 @@ inline constexpr Entry kpt_BR[] = {
     {"Native (%s, %ux%u)", "Nativa (%s, %ux%u)"},
     {"Native (the game's)", "Nativo (do jogo)"},
     {"Nintendo (Def)", "Nintendo (Padrão)"},
+    {"No Lossless.dll was read from the game's lossless folder: MihawkGen or the built-in one makes the frames.", "Nenhum Lossless.dll foi lido da pasta lossless do jogo: o MihawkGen ou a integrada gera os quadros."},
     {"No picture from a temporal Upscaler to make them from: NVIDIA DLSS or DLAA, or AMD FSR, on the Upscaler row. The game's own menus have none.", "Sem imagem de um Upscaler temporal para gerá-los: NVIDIA DLSS ou DLAA, ou AMD FSR, na linha Upscaler. Os menus do próprio jogo não têm."},
     {"No playback output could be opened. The game keeps trying.", "Não foi possível abrir uma saída de áudio. O jogo continua tentando."},
     {"No tearing and no wait where the driver allows it (mailbox); otherwise as On, or on Windows as Off.", "Sem tearing e sem espera onde o driver permite (mailbox); senão, como Ligado, ou no Windows como Desligado."},
@@ -572,6 +574,7 @@ inline constexpr Entry kpt_BR[] = {
     {"Which lines the FPS counter's Dev level shows, and whether the version and hardware show at every level.", "Quais linhas o nível Dev do contador de FPS mostra, e se a versão e o hardware aparecem em todos os níveis."},
     {"Which of NVIDIA's DLSS networks draws the picture.", "Qual das redes DLSS da NVIDIA desenha a imagem."},
     {"Who makes the frames at 2x and up. NVIDIA DLSS Frame Generation needs a temporal Upscaler (DLSS, DLAA or FSR) for the scene's depth and motion. Changes at once.", "Quem gera os quadros em 2x ou mais. O NVIDIA DLSS Frame Generation precisa de um Upscaler temporal (DLSS, DLAA ou FSR) para a profundidade e o movimento da cena. Muda na hora."},
+    {"Who makes the frames. Lossless Scaling's is offered with your own Lossless.dll in the game's lossless folder. Changes at once.", "Quem gera os quadros. O do Lossless Scaling aparece com o seu próprio Lossless.dll na pasta lossless do jogo. Muda na hora."},
     {"Wider than 16:9: the camera sees more at the sides. The HUD and menus keep the middle 16:9.", "Mais largo que 16:9: a câmera vê mais nas laterais. O HUD e os menus ficam no 16:9 do meio."},
     {"Window scaling filter", "Filtro de escala"},
     {"With Native, how the game's scene meets the peak brightness. Vanilla: the game's own curve. PsychoV35: RenoDX's tone mapper, the same mid grey with highlights that roll off into the peak and keep their colour.", "Com Nativo, como a cena do jogo chega ao brilho máximo. Vanilla: a curva do próprio jogo. PsychoV35: o mapeador de tons do RenoDX, o mesmo cinza médio, com realces que se suavizam até o pico e mantêm sua cor."},
@@ -7352,7 +7355,7 @@ inline constexpr Entry kzh_Hant[] = {
 };
 inline constexpr Lang kLangs[] = {
     {"en", "English", nullptr, 0},
-    {"pt-BR", "Português (Brasil)", kpt_BR, 566},
+    {"pt-BR", "Português (Brasil)", kpt_BR, 569},
     {"es-419", "Español (Latinoamérica)", kes_419, 563},
     {"es", "Español (España)", kes, 565},
     {"fr", "Français", kfr, 560},

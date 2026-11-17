@@ -25,6 +25,7 @@
 #include "vk_reflex.h"   // (NVIDIA Reflex: which game frame a set shows, reflex_frame / reflex_present_frame)
 #include "vk_fsr3_inputs.h"   // (AMD FSR 3.1 frame interpolation's depth and motion)
 #include "vk_fsr3fi.h"
+#include <sys/stat.h>
 #include "vk_menu.h"
 #include "fg_by.h"
 #include "vk_present_rect.h"
@@ -34,6 +35,12 @@
 #include "framegen.h"   // (PS5_MihawkGen's generator, framegen/include: ps5/build.py)
 #endif
 #include "vk_texture.h"
+#ifdef LONGSHOT_LSFG
+#include "lsfg/lsfg_backend.h"   // (Lossless Scaling's frame generation: gpu/vk/lsfg)
+namespace mkwvk {
+extern VmaAllocator vma;   // (vk_vma.cpp)
+}
+#endif
 
 #include "vk_builtin_spv.h"   // (RX_VK_SHADER_DIR)
 #include "shaders/fg_copy_comp_spv.h"
@@ -362,8 +369,9 @@ void neural_drop() {   // (with drop_size: the device is idle)
     neural.tried = false;
 }
 
+bool lossless_there();   // (below: Lossless Scaling's chain is made)
 bool neural_ready() {   // (after ensure_size: the context is made for the frames' size)
-    if (!fg_by::wants_network(fg.by)) return false;   // (the row: not asked for, so not loaded)
+    if (!fg_by::wants_network(fg.by, lossless_there())) return false;   // (the row: not asked for, so not loaded)
     if (neural.tried) return neural.ctx != nullptr;
     neural.tried = true;
     if (const char* e = getenv("RX_VK_MIHAWKGEN"); e && e[0] == '0') return false;
@@ -430,9 +438,145 @@ bool neural_frames(VkCommandBuffer cmd, int set, int prev, int cur, int n, const
 }
 #endif
 
+#ifdef LONGSHOT_LSFG
+// (PS5) Lossless Scaling's frame generation (LSFG), from the player's own Lossless.dll: gpu/vk/lsfg, PS5SX2's port of the Eden
+// emulator's (PROVENANCE.md). Its chain takes every frame of the game in order and, from the third since a reset, makes the frame
+// between the last two at 1/4, 1/3, 1/2, 2/3 or 3/4 of the way: the made frames of 2x to 4x, and Auto's at the nearest of
+// those, in place of PS5_MihawkGen's and of the block matching below.
+// On at the Frame generation by row's Lossless Scaling. RX_VK_LSFG=0: not offered, as without the file.
+// RX_VK_LSFG_DIR=<folder>: where Lossless.dll is (default /app0/lossless, then
+// /data/prosperoeden/user/lossless, where ProsperoEden keeps the player's). RX_VK_LSFG_FLOW=<0.25 to 1>: the optical flow's
+// share of the frame's size (default 0.5 above 1920x1080, else 1).
+struct Lsfg {
+    lsfg::Backend* be = nullptr;
+    bool tried = false;
+    lsfg::ShaderModules modules;
+    uint64_t fed = 0, made = 0, taken = 0;
+    double off = 0;   // (how far the made frames' moments were from the ones asked, summed)
+} lsfgen;
+
+void lsfg_drop() {   // (with drop_size: the device is idle)
+    delete lsfgen.be;
+    lsfgen.be = nullptr;
+    lsfgen.tried = false;
+}
+
+/// Where the player's Lossless.dll is looked for, in order (a null: not set)
+std::vector<const char*> lsfg_dirs() {
+#ifdef __PROSPERO__
+    return {getenv("RX_VK_LSFG_DIR"), "/app0/lossless", "/data/prosperoeden/user/lossless"};
+#else
+    return {getenv("RX_VK_LSFG_DIR"), "lossless"};
+#endif
+}
+
+bool lsfg_ready() {   // (after ensure_size: the chain is made for the frames' size)
+    if (!fg_by::wants_lossless(fg.by)) return false;   // (the row: not asked for, so not made)
+    if (lsfgen.tried) return lsfgen.be != nullptr;
+    lsfgen.tried = true;
+    if (lsfgen.modules.empty()) {
+        const std::vector<const char*> dirs = lsfg_dirs();
+        lsfg::LosslessStatus status = lsfg::LosslessStatus::NotInstalled;
+        std::string used;
+        for (const char* dir : dirs) {
+            if (!dir) continue;
+            used = lsfg::FindLosslessDll(dir);
+            uint64_t size = 0;
+            status = lsfg::LoadShaderModules(used, lsfgen.modules, &size);
+            if (status == lsfg::LosslessStatus::Ok) {
+                logf("vk: LSFG: %zu shaders from %s (%llu bytes)", lsfgen.modules.size(), used.c_str(), (unsigned long long)size);
+                break;
+            }
+            logf("vk: LSFG: %s: %s", used.c_str(), lsfg::LosslessStatusText(status));
+            lsfgen.modules.clear();
+        }
+        if (status != lsfg::LosslessStatus::Ok) {
+            logf("vk: LSFG: no Lossless.dll to read the shaders from: the other generators make the frames");
+            return false;
+        }
+    }
+    float flow = (uint64_t)fg.w * fg.h > 1920ull * 1080ull ? 0.5f : 1.0f;
+    if (const char* e = getenv("RX_VK_LSFG_FLOW")) flow = std::clamp((float)atof(e), 0.25f, 1.0f);
+    std::string error;
+    lsfg::Backend* be = new lsfg::Backend;
+    if (!be->Create(dev.physical, dev.device, vma, lsfgen.modules, fg.w, fg.h, VK_FORMAT_R8G8B8A8_UNORM, flow, error)) {
+        logf("vk: LSFG: %s: the other generators make the frames", error.c_str());
+        delete be;
+        return false;
+    }
+    lsfgen.be = be;
+    logf("vk: LSFG: Lossless Scaling's shaders make the frame between two of the game's (%ux%u, flow %.2f; %s)", fg.w, fg.h,
+         flow, be->Notes().c_str());
+    return true;
+}
+
+void lsfg_layout(VkCommandBuffer cmd, VkImage image, VkImageLayout from) {   // (to GENERAL, what the chain starts from)
+    VkImageMemoryBarrier2 b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
+    b.srcStageMask = b.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+    b.srcAccessMask = b.dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT;
+    b.oldLayout = from;
+    b.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+    b.srcQueueFamilyIndex = b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    b.image = image;
+    b.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    VkDependencyInfo d{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+    d.imageMemoryBarrierCount = 1;
+    d.pImageMemoryBarriers = &b;
+    vkCmdPipelineBarrier2(cmd, &d);
+}
+
+/// The game's frame fg.frames[cur] into the chain, every present and in order (blend false: no frame before it to blend from,
+/// the chain starts again); true when the frame halfway between it and the one before is in the chain's output
+bool lsfg_feed(VkCommandBuffer cmd, int cur, bool blend) {
+    if (!lsfg_ready()) return false;
+    if (!blend) lsfgen.be->Reset();
+    const VkImage in = lsfgen.be->FrameImage();
+    lsfg_layout(cmd, in, VK_IMAGE_LAYOUT_UNDEFINED);   // (whatever the chain's passes left it in: all of it is written here)
+    const VkImageCopy c{{VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, {0, 0, 0}, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, {0, 0, 0},
+                        {fg.w, fg.h, 1}};
+    vkCmdCopyImage(cmd, fg.frames[cur].image, VK_IMAGE_LAYOUT_GENERAL, in, VK_IMAGE_LAYOUT_GENERAL, 1, &c);
+    full_barrier(cmd);
+    const bool made = lsfgen.be->RecordShared(cmd);   // (the frames themselves: lsfg_take, each at its moment)
+    note_work();   // (the chain's dispatches are not counted: the barriers after them are not left out)
+    full_barrier(cmd);
+    lsfgen.fed++;
+    if (lsfgen.fed % 600 == 0) {
+        logf("vk: LSFG: %llu frames made in the last 600 of the game's, %.3f of a frame from their moments on average",
+             (unsigned long long)lsfgen.taken, lsfgen.taken ? lsfgen.off / (double)lsfgen.taken : 0.0);
+        lsfgen.taken = 0, lsfgen.off = 0;
+    }
+    return made;
+}
+
+/// The frame at t of the way between the last two (after lsfg_feed said true; the chain's nearest moment) into a set's
+/// frame, w x h R8G8B8A8 in GENERAL
+void lsfg_take(VkCommandBuffer cmd, VkImage out, float t) {
+    lsfgen.off += std::fabs(lsfgen.be->RecordGeneration(cmd, t) - t);
+    note_work();
+    full_barrier(cmd);
+    const VkImageCopy c{{VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, {0, 0, 0}, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, {0, 0, 0},
+                        {fg.w, fg.h, 1}};
+    vkCmdCopyImage(cmd, lsfgen.be->OutputImage(), VK_IMAGE_LAYOUT_GENERAL, out, VK_IMAGE_LAYOUT_GENERAL, 1, &c);
+    full_barrier(cmd);
+    lsfgen.taken++;
+}
+#endif
+
+#ifdef HOOKSHOT_MIHAWKGEN
+bool lossless_there() {
+#ifdef LONGSHOT_LSFG
+    return lsfgen.be != nullptr;
+#else
+    return false;
+#endif
+}
+#endif
 
 // Only after the display jobs and device have drained (ensure_size), or before any frame used these images.
 void drop_size() {
+#ifdef LONGSHOT_LSFG
+    lsfg_drop();
+#endif
 #ifdef HOOKSHOT_MIHAWKGEN
     neural_drop();
 #endif
@@ -450,9 +594,10 @@ void drop_size() {
 bool by_short = false;   // (PS5: memory is short, the renderer's own in place of the row's generator; the menu reads it)
 std::atomic<int> memory_level{0};   // (PS5: fg_by::level_next's step, 0 to 2; framegen_on asks, the menu reads it)
 bool ensure_size(VkCommandBuffer cmd, uint32_t w, uint32_t h) {
-    // (PS5: the Frame generation by row too. The network is made where the row names it and let go with the rest below,
-    // so a change of the row to the renderer's own frees its images)
-#ifdef HOOKSHOT_MIHAWKGEN
+    // (PS5: the Frame generation by row too. Its generators are made for the one the row names and let go with the rest
+    // below, so a change of the row frees the other's images: never PS5_MihawkGen's network and Lossless Scaling's chain
+    // at once)
+#if defined(HOOKSHOT_MIHAWKGEN) || defined(LONGSHOT_LSFG)
     // (a test run with no one at the menu: RX_VK_FRAMEGEN_BY_CYCLE=<seconds> moves the row on to its next value every
     // that many seconds, as a player would there)
     static const int64_t cycle = getenv("RX_VK_FRAMEGEN_BY_CYCLE") ? (int64_t)atoi(getenv("RX_VK_FRAMEGEN_BY_CYCLE")) * 1000000000 : 0;
@@ -503,7 +648,7 @@ bool ensure_size(VkCommandBuffer cmd, uint32_t w, uint32_t h) {
         logf("vk: frame interpolation: its images (%ux%u) were not made: off", w, h);
         return false;
     }
-#ifdef HOOKSHOT_MIHAWKGEN
+#if defined(HOOKSHOT_MIHAWKGEN) || defined(LONGSHOT_LSFG)
     if (fg.by != by) logf("vk: frame interpolation by: %s", fg_by::name(by));
 #endif
     fg.w = w, fg.h = h, fg.mult = mult, fg.by = by;
@@ -773,7 +918,7 @@ void display_main() {
 // (longshot) The last sets' makers (framegen_maker): each framegen_record notes its set's on the replay thread; the menu's
 // thread reads the counts. A ring of kMakerSets, the counts of each maker in it
 constexpr int kMakerSets = 64;
-std::atomic<int> maker_count[5] = {kMakerSets, 0, 0, 0, 0};
+std::atomic<int> maker_count[6] = {kMakerSets, 0, 0, 0, 0, 0};
 uint8_t maker_ring[kMakerSets] = {};
 int maker_pos = 0;
 std::atomic<int64_t> maker_at{0};
@@ -792,17 +937,31 @@ void note_maker(FgMaker m) {
 FgMaker framegen_maker() {
     // (none recorded for half a second: Frame generation off, or the window's presents without it)
     if (now_ns() - maker_at.load(std::memory_order_relaxed) > 500000000) return FgMaker::None;
-    // (who made the most of them; on a tie DLSS-G, then FSR 3.1, then the console's network, then the renderer's own)
+    // (who made the most of them; on a tie DLSS-G, then FSR 3.1, then the console's two, then the renderer's own)
     FgMaker best = FgMaker::None;
     int most = 0;
-    for (FgMaker m : {FgMaker::Dlss, FgMaker::Fsr3, FgMaker::Mihawk, FgMaker::BuiltIn})
+    for (FgMaker m : {FgMaker::Dlss, FgMaker::Fsr3, FgMaker::Lossless, FgMaker::Mihawk, FgMaker::BuiltIn})
         if (const int c = maker_count[(int)m].load(std::memory_order_relaxed); c > most) most = c, best = m;
     return best;
 }
 
 bool framegen_by_short() { return by_short; }
 
+bool framegen_lossless_file() {   // (the menu's thread, at its start: a file by that name, not read yet)
+#ifdef LONGSHOT_LSFG
+    if (const char* e = getenv("RX_VK_LSFG"); e && e[0] == '0') return false;   // (RX_VK_LSFG=0: as without the file)
+    for (const char* dir : lsfg_dirs()) {
+        struct stat st;
+        if (dir && stat(lsfg::FindLosslessDll(dir).c_str(), &st) == 0) return true;
+    }
+#endif
+    return false;
+}
+
 bool framegen_by_missing() {   // (the menu's thread: a flag and a pointer the replay thread sets, read as they are)
+#ifdef LONGSHOT_LSFG
+    if (fg.by == fg_by::kLossless) return lsfgen.tried && !lsfgen.be;
+#endif
 #ifdef HOOKSHOT_MIHAWKGEN
     if (fg.by == fg_by::kMihawk) return neural.tried && !neural.ctx;
 #endif
@@ -1170,6 +1329,9 @@ bool framegen_record(VkCommandBuffer cmd, VkImageView src, uint32_t sw, uint32_t
     const int32_t pc[4] = {x0, y0, w, h};
     pass(cmd, fg.copy, {{src, fg.nearest}, {fg.frames[cur].view, VK_NULL_HANDLE}}, uw, uh, pc, sizeof pc);
     pass(cmd, fg.luma, {{fg.frames[cur].view, fg.nearest}, {fg.lumas[cur].view, VK_NULL_HANDLE}}, qw, qh);
+#ifdef LONGSHOT_LSFG
+    const bool lsfg_mid = lsfg_feed(cmd, cur, blend);   // (Lossless Scaling's halfway frame, where it is on)
+#endif
     set->made = 0;
     set->shown = -1;
     if (auto_rate) {   // (Auto: a frame for each of the display's refreshes, at its own time)
@@ -1192,6 +1354,13 @@ bool framegen_record(VkCommandBuffer cmd, VkImageView src, uint32_t sw, uint32_t
             int made = 0;
             for (int k = 0; k < n; k++)
                 if (t[k] <= 0.999f) nt[made] = t[k], out[made++] = set->frame[k].view;
+#ifdef LONGSHOT_LSFG
+            if (lsfg_mid && made >= 1) {   // (each at the chain's moment nearest to its own)
+                for (int k = 0; k < n; k++)
+                    if (t[k] <= 0.999f) lsfg_take(cmd, set->frame[k].image, t[k]);
+                neural_made = true, who = FgMaker::Lossless;
+            } else
+#endif
             if (neural_frames(cmd, (int)(set - fg.sets), prev, cur, made, nt, out)) neural_made = true, who = FgMaker::Mihawk;
         }
 #endif
@@ -1245,6 +1414,13 @@ bool framegen_record(VkCommandBuffer cmd, VkImageView src, uint32_t sw, uint32_t
         float nt[kMaxMult];
         VkImageView out[kMaxMult];
         for (int k = 1; k < m; k++) nt[k - 1] = (float)k / (float)m, out[k - 1] = set->frame[k - 1].view;
+#ifdef LONGSHOT_LSFG
+        if (lsfg_mid && m <= 4) {   // (2x to 4x: the chain's own moments)
+            for (int k = 1; k < m; k++) lsfg_take(cmd, set->frame[k - 1].image, (float)k / (float)m);
+            set->made = m - 1, neural_made = true, who = FgMaker::Lossless;
+        }
+        else
+#endif
         if (neural_frames(cmd, (int)(set - fg.sets), prev, cur, m - 1, nt, out))
             set->made = m - 1, neural_made = true, who = FgMaker::Mihawk;
     }

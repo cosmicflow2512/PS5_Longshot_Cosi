@@ -6,9 +6,9 @@ namespace mkwvk::fg_by {
 
 // (the row's values, the options file's frame_generation_by. 0 and 1 are the PC's two. The console adds its own and its
 // row has no Auto: beside the Frame generation row's a player read the two as one. A file's 0 is kDefault there)
-enum : int { kAuto = 0, kBuiltIn = 1, kFsr3 = 2, kMihawk = 3 };
+enum : int { kAuto = 0, kBuiltIn = 1, kFsr3 = 2, kMihawk = 3, kLossless = 4 };
 #ifdef __PROSPERO__
-inline constexpr int kLeast = kBuiltIn, kMost = kMihawk, kDefault = kMihawk;
+inline constexpr int kLeast = kBuiltIn, kMost = kLossless, kDefault = kMihawk;
 #else
 inline constexpr int kLeast = kAuto, kMost = kBuiltIn, kDefault = kAuto;
 #endif
@@ -21,12 +21,18 @@ constexpr int step_over(int by, int dir) { return by == kFsr3 ? by + (dir > 0 ? 
 constexpr int known(int by) { return by == kFsr3 ? kDefault : by; }
 
 constexpr const char* name(int by) {
-    return by == kBuiltIn ? "Built-in" : by == kMihawk ? "MihawkGen" : "Auto";
+    return by == kBuiltIn ? "Built-in" : by == kMihawk ? "MihawkGen" : by == kLossless ? "Lossless Scaling" : "Auto";
 }
 
-/// PS5_MihawkGen's network is asked for: at its own value, and at the PC's Auto (a console's file from before the
-/// row had its values). At the renderer's own it is not loaded: its images are the game's memory then
-constexpr bool wants_network(int by) { return by == kAuto || by == kMihawk; }
+/// Lossless Scaling's chain is asked for: at its own value only (it needs the player's own Lossless.dll)
+constexpr bool wants_lossless(int by) { return by == kLossless; }
+
+/// PS5_MihawkGen's network is asked for: at Auto and at its own value, and at Lossless Scaling's while that chain is not
+/// there (no Lossless.dll, or it was not made), so a player without the file still has the network's frames.
+/// Never both at once: each holds its own images, and the console's memory is the game's first
+constexpr bool wants_network(int by, bool lossless_there) {
+    return by == kAuto || by == kMihawk || (by == kLossless && !lossless_there);
+}
 
 /// Frame generation by the memory left on the console, three steps: 0 the row's generator, 1 the renderer's own (it holds
 /// no images of its own: the light one), 2 none (its frames' images are let go). level: as it is; room: the console's free

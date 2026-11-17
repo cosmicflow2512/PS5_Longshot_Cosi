@@ -12,13 +12,16 @@ bool framegen_on();
 bool framegen_record(VkCommandBuffer cmd, VkImageView src, uint32_t sw, uint32_t sh, const int crop[4], bool native_pq);
 /// (longshot) Who made the made frames of the sets shown lately (the last 64, about a second at 60): what the Insert menu's
 /// Frame generation by row and the FPS counter name. None: none made (Off, nothing to blend from, none for half a second)
-enum class FgMaker { None, BuiltIn, Dlss, Fsr3, Mihawk };   // (the last: the console's network, fg_by.h)
+enum class FgMaker { None, BuiltIn, Dlss, Fsr3, Mihawk, Lossless };   // (the last two: the console's, fg_by.h)
 FgMaker framegen_maker();
-/// (PS5) The generator the Frame generation by row names was asked for and is not there (no network file): the
-/// renderer's own makes the frames, and the row's line says so
+/// (PS5) The generator the Frame generation by row names was asked for and is not there (no Lossless.dll, no network
+/// file): another makes the frames, and the row's line says so
 bool framegen_by_missing();
 /// (PS5) The console's memory is short and the renderer's own makes the frames in place of the row's generator
 bool framegen_by_short();
+/// (PS5) There is a Lossless.dll where Lossless Scaling's frames are read from (vk_framegen.cpp lsfg_dirs): the Frame
+/// generation by row offers them only then
+bool framegen_lossless_file();
 /// (PS5) Frame generation's step for the memory left: 0 the row's generator, 1 the renderer's own, 2 none (fg_by.h level_next)
 int framegen_memory_level();
 /// The first frame the last framegen_record made (null when it made none), w x h, GENERAL

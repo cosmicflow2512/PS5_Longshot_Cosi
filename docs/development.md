@@ -300,6 +300,7 @@ format, tone mapper, encoding and luminance changes reset the corresponding hist
 | `RX_VK_FRAMEGEN=0`, `RX_VK_FRAMEGEN_MULT=<1..8>` (1: Auto), `RX_VK_PACE=0`, `RX_VK_UPSCALE=<0..2>` | No frame generation whatever the menu says; over the options file: its multiplier, frame pacing, the upscaling filter |
 | `RX_VK_FRAMEGEN_BY_CYCLE=<seconds>` | PS5: the Frame generation by row moves on to its next value every that many seconds, for a run with no one at the menu |
 | `RX_VK_FG_AUTO_ROOM_MB=<n>`, `RX_VK_FG_LEVEL_CYCLE=<seconds>` | PS5: the free memory under which frame generation steps down (default: the textures' reserve); its three steps taken by the clock instead, for a test |
+| `RX_VK_LSFG=0`, `RX_VK_LSFG_DIR=<folder>`, `RX_VK_LSFG_FLOW=<0.25..1>` | PS5: Lossless Scaling's frames not offered, as without the file; where `Lossless.dll` is looked for first; the optical flow's share of the frame's size (default 0.5 above 1920x1080, else 1) |
 | `RX_VK_DEVICE=<n>` | The graphics card listed as `vk: device <n>` in the log, over the menu's GPU device |
 | `HOS_TRACE=1` | Every Horizon call logged, as `--trace` does |
 | `HOS_CV_SIGNAL_ALWAYS` (set) | SignalConditionVariable takes its lock and wakes even when no thread waits, as before it returned at once for no waiter (`host/nn_os_sync.c`); a control for a hang or a movie stutter |
