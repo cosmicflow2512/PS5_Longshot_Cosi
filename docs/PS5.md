@@ -1,7 +1,7 @@
 # Hookshot on the PS5
 
 This fork builds Hookshot (the static recompilation of *The Legend of Zelda: Ocarina of Time* for Nintendo Switch 2)
-as a native PS5 title, **PPSA99025**, on my homebrew stack: Mesa's RADV from
+as a native PS5 title, **PPSA99198**, on my homebrew stack: Mesa's RADV from
 [PS5_Vulkan](https://github.com/mihawk-99/PS5_Vulkan) and the platform layer of my
 [PS5_PayloadSDK](https://github.com/mihawk-99/PS5_PayloadSDK) fork. Upstream is
 [NotRexed/Hookshot](https://github.com/NotRexed/Hookshot) (the `upstream` remote); everything else here is upstream's.
@@ -18,12 +18,12 @@ as a native PS5 title, **PPSA99025**, on my homebrew stack: Mesa's RADV from
 | Lift | The game's ARM64 code to C, from your `.nup`, as upstream does it | `nx2/nup.py --only exefs`, `nx2/lift.py --standalone --write` |
 | Compile | The lifted game, `host/` and `gpu/vk` for `x86_64-sie-ps5` (Zen 2) | `ps5/build.py` |
 | Link | One executable with RADV linked in, signed as the console's fake SELF | `ps5/tools/link.sh` (PS5_VulkanTemplate's link) |
-| Install | `dist/PPSA99025` to `/data/homebrew/PPSA99025`; `romfs/` is read in place from your `.nup` on the console (`HOS_PS5_NUP`, else `/data/lichii/roms/oot/oot.nup`, else `/data/prosperoeden/roms/oot/oot.nup`) | FTP, `host/ps5/nup_romfs.c` |
+| Install | `dist/PPSA99198` to `/data/homebrew/PPSA99198`; `romfs/` is read in place from your `.nup` on the console (`HOS_PS5_NUP`, else `/data/lichii/roms/oot/oot.nup`, else `/data/prosperoeden/roms/oot/oot.nup`) | FTP, `host/ps5/nup_romfs.c` |
 
 Players do all of it with the Longshot PS5 Builder, a desktop program for Linux and Windows that carries everything but
 the game (`ps5/builder/README.md`). For development, `ps5/builder/build_kit.sh` fetches PS5_Mesa, PS5_PayloadSDK and
 PS5_MihawkGen at the revisions the build was played with into `.local/`, builds RADV and the SDK once, and the title
-is `dist/PPSA99025`. By hand, with those in place, the steps are:
+is `dist/PPSA99198`. By hand, with those in place, the steps are:
 
 ```sh
 python3 -I nx2/nup.py <your game.nup> --only exefs --extract work/game
