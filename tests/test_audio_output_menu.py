@@ -50,6 +50,7 @@ static int au_device_channels(void) { device_asked++; return device_channels; }
 HOST
 struct Row { int tab; const char* name; int* value; };
 struct { int output_res, vsync, resolution, fps_cap, upscale, dlss, handheld, ultrawide, audio_output; } opts;   // (ultrawide: the Aspect ratio row's key)
+static int display_refresh_mhz() { return 60000; }   // (vk_main.cpp's; the frame generation rows' names ask it, PRs #18-#21)
 MENU
 int main(int argc, char **argv) {
     assert(argc == 7);
