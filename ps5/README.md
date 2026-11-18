@@ -10,7 +10,11 @@ in movies, about 40 in the opening's scenes, 50 in Link's house, 35 in the fores
 every 120 presents). No crash or GPU fault in five runs. Not tried: beyond the forest, sound by ear, a real controller.
 Players build it with the desktop builder, `ps5/builder` (an AppImage and a portable Windows folder).
 
-Frame generation is on from the start: PS5_MihawkGen's network makes one frame between each two of the game's, so the
+Frame generation is on from the start, at 2x, the Frame generation row's default on the console: the menu changes it and
+`longshot_options.ini` keeps it. On the console the row names its values for what they do to the game: "2x (game at
+30 fps)" holds the game at half the display's rate, and "Fill to 60 fps" (the row's Auto) leaves the game at its own
+rate and makes frames only for the refreshes it misses. At 2x PS5_MihawkGen's network makes one frame between each two
+of the game's, so the
 forest's 31.5 game frames are 63 shown a second, evenly, on the 60 Hz mode. `HOS_PS5_HZ=120` takes the 119.88 Hz mode:
 with `RX_VK_FRAMEGEN_MULT=3` 90 are shown (the network's), with `4` 120 (the renderer's own interpolation: the network
 did not start at 4x), the game held at 30 in both. Measured, not judged by eye.

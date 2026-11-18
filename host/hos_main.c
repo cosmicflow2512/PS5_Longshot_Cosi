@@ -2298,7 +2298,9 @@ int main(int argc, char **argv) {
            interpolation is off (RX_VK_FSR_FG=1 puts it back where RX_VK_MIHAWKGEN=0 leaves the frame to it). */
         static const char *const defaults[][2] = {
             {"RX_VK_TEX_MAX_DIM", "1024"}, {"RX_VK_TEX_SKIP_MB", "16"}, {"RX_VK_ASTC_BC_ALL", "1"},
-            {"RX_VK_ASTC_BC_MB", "0"}, {"RX_VK_FRAMEGEN_MULT", "2"}, {"RX_VK_PACE", "1"},
+            /* (frame generation's 2x is the menu row's default on the console, gpu/vk/vk_menu.h: set here it was forced
+               at every start, over the player's choice in the menu and over Auto) */
+            {"RX_VK_ASTC_BC_MB", "0"}, {"RX_VK_PACE", "1"},
             {"RX_VK_FSR_FG", "0"},
             /* (every shader translated before the first play, where hookshot_shaders.bin is beside the game, without the
                driver's part: with it the 4,128 compute programs alone went at ~1.3 a second, hours in all; without, ~26) */

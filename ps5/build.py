@@ -163,11 +163,18 @@ def jobs_for(rt64, gen_dir):
         lib = os.path.relpath(s, VK).split(os.sep)[0] in ("eden", "sirit")
         fl = vfl + ([shader_stamp] if os.path.basename(s) == "vk_shader.cpp" else []) + \
             ([stamp] if os.path.basename(s) == "vk_menu.cpp" else []) + \
+            (["-DLONGSHOT_LSFG"] if os.path.basename(s) == "vk_framegen.cpp" else []) + \
             (imgui_fl if os.path.basename(s) in ("vk_imgui.cpp", "vk_menu.cpp") else []) + \
             (["-DHOOKSHOT_MIHAWKGEN", "-I" + os.path.join(MIHAWKGEN, "framegen", "include")]
              if HAS_MIHAWKGEN and os.path.basename(s) == "vk_framegen.cpp" else [])
         out.append((s, os.path.join(OUT, "obj", "vk_" + rel + ".o"), fl,
                     lib_digest if lib else vk_digest + (imgui_digest if os.path.basename(s) in ("vk_imgui.cpp", "vk_menu.cpp") else "")))
+    # (Lossless Scaling's frame generation from the player's own Lossless.dll: gpu/vk/lsfg, PS5SX2's port; RX_VK_LSFG=1)
+    lsfg_dir = os.path.join(VK, "lsfg")
+    for f in sorted(os.listdir(lsfg_dir)):
+        if f.endswith(".cpp"):
+            out.append((os.path.join(lsfg_dir, f), os.path.join(OUT, "obj", "lsfg_" + f[:-4] + ".o"),
+                        vfl + ["-DLONGSHOT_LSFG"], vk_digest))
     if HAS_MIHAWKGEN:   # (its Vulkan calls through the back end's loaded pointers: vk_loader.h, as every unit of gpu/vk)
         mfl = vfl + ["-include", os.path.join(VK, "vk_loader.h"), "-I" + os.path.join(MIHAWKGEN, "framegen", "include"),
                      "-I" + os.path.join(MIHAWKGEN, "framegen", "src")]
