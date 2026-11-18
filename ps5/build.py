@@ -59,6 +59,11 @@ HAS_MIHAWKGEN = all(os.path.exists(f) for f in MIHAWKGEN_SOURCES + [MIHAWKGEN_NE
 COMMON = ["-march=znver2", "-ffp-contract=off", "-DA64_HOST_BASE=0x1000000000ULL", "-fno-omit-frame-pointer",
           "-ffunction-sections", "-fdata-sections", "-g0", "-Wno-everything"]
 
+# Every mkdir of the host's and the renderer's sources is host/ps5/longshot_ps5.c's, which makes the folder for every
+# user: the console runs the title as a user of its own, and what it made 0755 or 0700 the FTP server and a file
+# manager, another user, could list and not empty ("Permission denied" deleting a cache or a report).
+MKDIR = "-Dmkdir=hos_ps5_mkdir"
+
 
 def pkg(name, version_):
     return os.path.join(CPM, name, version_)
@@ -97,7 +102,7 @@ def jobs_for(rt64, gen_dir):
 
     # the runtime: host/ as Linux builds it, without SDL's loader (host/ps5/hos_sdl_ps5.c) and the Linux-only files
     host_digest = tree_digest(HOST, rt64, GEN) + tree_digest(os.path.join(VK), ext=("vk_api.h", "dlss_math.h"))
-    host_fl = COMMON + ["-I" + POSIX, "-D_GNU_SOURCE", "-I" + HOST, "-I" + rt64, "-I" + GEN, "-O2", "-mcx16", "-DA64_POLLING",
+    host_fl = COMMON + [MKDIR, "-I" + POSIX, "-D_GNU_SOURCE", "-I" + HOST, "-I" + rt64, "-I" + GEN, "-O2", "-mcx16", "-DA64_POLLING",
                         "-DA64_WRITE_TRACK", "-I" + os.path.join(OPUS, "include"), "-I" + os.path.join(FFMPEG, "include"),
                         "-I" + os.path.join(DEPS, "zstd", "include"),
                         "-I" + os.path.join(pkg("vulkanheaders", "v1.4.345"), "include"),
@@ -122,7 +127,7 @@ def jobs_for(rt64, gen_dir):
     # the Vulkan back end, Eden's recompiler and sirit, as nx2/build.py's vk_sources (C++20 with exceptions: Eden throws)
     import build as upstream   # (nx2/build.py: the source list, kept in one place)
     spirv = pkg("spirv-headers", "vulkan-sdk-1.4.341.0")
-    vfl = COMMON + ["-I" + POSIX, "-D_GNU_SOURCE", "-include", os.path.join(PS5, "win32_ps5.h"),
+    vfl = COMMON + [MKDIR, "-I" + POSIX, "-D_GNU_SOURCE", "-include", os.path.join(PS5, "win32_ps5.h"),
                     "-include", "algorithm", "-include", "cstdio", "-include", "cstdlib", "-include", "cstring",
                     "-include", "functional", "-include", "string", "-include", "vector",
                     "-std=c++20", "-O2", "-DNDEBUG", "-fexceptions", "-fcxx-exceptions", "-DVK_NO_PROTOTYPES",

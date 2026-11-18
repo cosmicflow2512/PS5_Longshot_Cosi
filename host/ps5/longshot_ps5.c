@@ -24,6 +24,21 @@ int accept4(int s, struct sockaddr *addr, socklen_t *len, int flags) {
 }
 /* (the program cache's read-ahead hints, gpu/vk/vk_progcache.cpp) */
 int posix_fadvise(int fd, off_t offset, off_t len, int advice) { (void)fd, (void)offset, (void)len, (void)advice; return 0; }
+/* (every folder the host and the renderer make, ps5/build.py MKDIR: for every user, whatever mode was asked. The console
+   runs the title as a user of its own; the FTP server and a file manager are another, and could not delete what lay in a
+   folder made 0755 or 0700. One that is there already, made by a build before this, is opened the same way: the title
+   asks for its folders at every start) */
+#undef mkdir
+int mkdir(const char *path, mode_t mode);
+int hos_ps5_mkdir(const char *path, mode_t mode) {
+    (void)mode;
+    const int r = mkdir(path, 0777);
+    if (r != 0 && errno == EEXIST) {
+        chmod(path, 0777);   /* (ours: opened; another user's, made by FTP: refused, and open already) */
+        errno = EEXIST;
+    }
+    return r;
+}
 /* (files made by Longshot's writers: the console has no mask to change) */
 mode_t umask(mode_t mask) { (void)mask; return 022; }
 /* (the bug report's home folder, gpu/vk/vk_bug_report.cpp: it takes none) */
