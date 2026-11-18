@@ -11,7 +11,7 @@ nearly full and earlyoom killed the process. Checked here without a GPU or game:
   on entry and after 5 s idle, and checks malloc_trim every 600 frames;
 - imports_give_back() acts once per sample, trims spare capture buffers to 32 MB and unpins idle unmirrored guest-pool imports
   for the shortfall less dead_import_bytes and evicted_import_bytes;
-- pipeline_cache_play() on Linux (<= 20 GB RAM or under pressure) drops ready programs' VkShaderModules whose pipelines were
+- pipeline_cache_play() on Linux (<= 20 GB RAM or under pressure) and on the PS5 drops ready programs' VkShaderModules whose pipelines were
   built in the precompile (remade from longshot_programs.bin by program_cache_complete_graphics when play builds a new pipeline
   variant), then runs malloc_trim(0).
 
@@ -91,7 +91,7 @@ def check_source():
 
     play = block(draw, "void pipeline_cache_play()")
     need("vk_draw.cpp: pipeline_cache_play()", play,
-         ["#ifdef __linux__",
+         ["#if defined(__linux__) || defined(__PROSPERO__)",
           "linux_pressure::should_drop_modules(total_bytes, over, getenv(\"RX_VK_KEEP_MODULES\"), getenv(\"RX_VK_DROP_MODULES\"))",
           "program_cache_drop_modules()",
           "if (dropped_modules) malloc_trim(0);"])

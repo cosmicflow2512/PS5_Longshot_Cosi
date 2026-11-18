@@ -9498,7 +9498,7 @@ void precompile_run(void (*progress)(size_t done, size_t total)) {
     std::unordered_set<uint64_t> listed_here;   // (the listed keys this install has a program of)
     const size_t programs_n = program_cache_load_some(wanted, [&](Program& p) {
         ensure_layout(p);
-#ifdef __linux__
+#if defined(__linux__) || defined(__PROSPERO__)
         if (!p.compute && wanted_variants.count(mix(p.key, p.variant))) program_cache_note_built(p);   // (pipeline_cache_play)
 #endif
         if (p.compute) {
@@ -10680,7 +10680,7 @@ int64_t draw_slotgen_saves() {   // (Descriptor reuse: of those, what the global
 void pipeline_cache_play() {
     play_cache_begin();
     programs_play_begin();   // (the census: what is made from here on is made in play)
-#ifdef __linux__
+#if defined(__linux__) || defined(__PROSPERO__)
     // (longshot) On Linux with <= 20 GB of RAM (the Steam Deck's 16 GB shared memory and 16 GB PCs) or when memory pressure is
     // already active (or RX_VK_DROP_MODULES=1), the VkShaderModules of ready programs whose pipelines were built in precompile_run
     // (~37,000 modules, ~1.5-1.8 GB of uncompressed SPIR-V in the driver's heap) have done their work once precompile_run finishes.
@@ -10699,6 +10699,12 @@ void pipeline_cache_play() {
                                              linux_pressure::commit_reserve(getenv("RX_VK_COMMIT_RESERVE_MB")),
                                              has_swap);
         }
+#ifdef __PROSPERO__
+        // (PS5: the case the rule was made for, 16 GB shared with the GPU and the guest, and no /proc/meminfo to say so.
+        // The modules of the programs read at start held about 300 MiB of the title's heap for the whole session (2,183
+        // programs, by a sample of the heap's live blocks); the heap gives the room back at its next trim)
+        total_bytes = 16ull << 30;
+#endif
         size_t dropped_modules = 0;
         if (linux_pressure::should_drop_modules(total_bytes, over, getenv("RX_VK_KEEP_MODULES"), getenv("RX_VK_DROP_MODULES"))) {
             dropped_modules = program_cache_drop_modules();
