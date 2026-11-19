@@ -24,9 +24,10 @@ where `<tier>` matches `Fsr411::Upscaler` tiers (`t1080_m0`, `t1080_m1`, `t2160_
 Search order checked at runtime by `vk_fsr4.cpp`:
 1. `$RX_VK_FSR_DIR` (if set)
 2. `/app0/fsr4/<variant>`
-3. `/data/longshot/PPSA99025/fsr4/<variant>`
+3. `/data/longshot/PPSA99198/fsr4/<variant>`, then `/data/longshot/PPSA99025/fsr4/<variant>` (the title's ID before it moved
+   off reUndr's)
 4. `/data/eglantineps5/user/fsr4/<variant>`
-5. `/app0/fsr4` and `/data/longshot/PPSA99025/fsr4` directly
+5. `/app0/fsr4`, `/data/longshot/PPSA99198/fsr4` and `/data/longshot/PPSA99025/fsr4` directly
 
 ## Environment switches (`longshot_env.txt`)
 

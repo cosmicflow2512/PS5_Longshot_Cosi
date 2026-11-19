@@ -143,7 +143,7 @@ gives the images back too. The rows' lines say when memory has stepped it down.
 With the player's own `Lossless.dll` (from Lossless Scaling, which is not part of this repository and is not
 distributed with it) the Frame generation by row also offers Lossless Scaling: its frame generation's compute
 shaders are read from that file at run time and run on the console's GPU. The file goes in a `lossless` folder in
-the title's folder (`/data/homebrew/PPSA99025/lossless/Lossless.dll`); ProsperoEden's own
+the title's folder (`/data/homebrew/PPSA99198/lossless/Lossless.dll`); ProsperoEden's own
 (`/data/prosperoeden/user/lossless/`) is looked in after it, and `RX_VK_LSFG_DIR` names another place first. Without
 the file the row does not show the value. It makes the frames of 2x to 4x and of Auto; above 4x the renderer's own
 does.
