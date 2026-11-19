@@ -487,16 +487,18 @@ void vma_log_heaps() {
 }
 #ifdef __PROSPERO__
 /// (PS5) What the renderer may hold of the console's one memory pool, which the game's own memory, the runtime's heap and
-/// the program share: its own blocks now, plus the largest free direct-memory piece less a reserve kept for the game (its
-/// pages are backed as it touches them: host/ps5/win32_ps5.c), at most HOS_PS5_RENDER_MB (2560). RADV's own figures do
+/// the program share: its own blocks now, plus the free direct memory in all less a reserve kept for the game (its
+/// pages are backed as it touches them: host/ps5/win32_ps5.c), at most HOS_PS5_RENDER_MB (2560). Free in all, not the
+/// largest free piece: the driver stitches a buffer from 2 MiB pieces (PS5_Mesa radv_ps5_platform.c), and on a base PS5 in
+/// Castle Town the largest piece was 65 MiB with 1.5 GB free, which held the renderer to what it had and evicted textures in
+/// use (issue #39; the texture code already counted it this way). RADV's own figures do
 /// not fit here: its device heap was 8.6 GB "allowed", and its usage counts the game's pools the renderer imports, pages
 /// already counted as the game's: the renderer grew to 3.3 GB of blocks with "8.3 of 8.6 GB" used while the game's next
 /// page found no memory.
-extern "C" uint64_t hos_ps5_direct_free(void);   // (host/ps5/win32_ps5.c: the largest free piece)
 static uint64_t ps5_render_budget(uint64_t own) {
     static const uint64_t cap = (getenv("HOS_PS5_RENDER_MB") ? (uint64_t)atoi(getenv("HOS_PS5_RENDER_MB")) : 2560) << 20;
     static const uint64_t reserve = (getenv("HOS_PS5_RESERVE_MB") ? (uint64_t)atoi(getenv("HOS_PS5_RESERVE_MB")) : 2048) << 20;
-    const uint64_t free_now = hos_ps5_direct_free();
+    const uint64_t free_now = hos_ps5_direct_room();
     const uint64_t room = own + (free_now > reserve ? free_now - reserve : 0);
     return std::min(cap, room);
 }

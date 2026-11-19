@@ -15,6 +15,7 @@ import argparse
 import ftplib
 import io
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -86,6 +87,9 @@ def main():
     spec = importlib.util.spec_from_file_location("run_title", os.path.join(VULKAN, "tools", "run-title.py"))
     rt = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(rt)
+    # (a crash record ends the run only when it is not a payload's: the console's other homebrew (ps5-web-stream's supervisor,
+    # ps5debug) runs as payload.elf and its crashes are not the title's. The record names the process a few lines in)
+    rt.CRASH = re.compile(r"# proc name: (?!payload\.elf)|GPU_FAULT|gpu fault", re.I)
     started = [None]
     stop_sent = threading.Event()
 

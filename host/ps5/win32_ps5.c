@@ -1163,6 +1163,66 @@ uint64_t hos_ps5_direct_room(void) {
     return __atomic_load_n(&room, __ATOMIC_RELAXED);
 }
 
+/* ---- the memory floor: the title closes itself before the console runs out of direct memory ----
+   A title that takes the last of its direct memory does not always just crash: on a base PS5 (12 GiB for the title) entering
+   Castle Town took the whole console down twice (firmware 12.60, issue #4, measured by morpheus302). So a thread watches what is
+   free in all and, below HOS_PS5_MEM_FLOOR_MB (192 MiB; 0 turns the watch off), says why on the console and in klog and asks
+   the shell to close the title, the way a player's quit does. It does not make room: it only keeps the console up. Read every
+   250 ms, every 25 ms once less than 1 GiB is left (a burst of render targets takes a gigabyte in a few frames there). */
+struct ps5_notification { uint8_t reserved[45]; char message[3075]; };   /* (what the shell's notification request takes) */
+int sceKernelSendNotificationRequest(int device, struct ps5_notification *request, size_t size, int blocking);
+static uint64_t floor_bytes(void) {
+    const char *e = getenv("HOS_PS5_MEM_FLOOR_MB");
+    return (e && *e ? strtoull(e, NULL, 10) : 192) << 20;
+}
+static void *memory_floor_watch(void *unused) {
+    (void)unused;
+    const uint64_t floor = floor_bytes();
+    uint64_t low = UINT64_MAX;   /* (the least seen, logged as it goes down past each 256 MiB under 1 GiB) */
+    for (;;) {
+        uint64_t pieces = 0;
+        const uint64_t room = direct_room_now(&pieces);
+        if (room < (1ull << 30) && room >> 28 < low >> 28)
+            fprintf(stderr, "[ps5] memory floor: %llu MiB of direct memory free in %llu pieces (the title closes under %llu)\n",
+                    (unsigned long long)(room >> 20), (unsigned long long)pieces, (unsigned long long)(floor >> 20));
+        if (room < low) low = room;
+        if (room < floor) {
+            int64_t at = 0;
+            size_t largest = 0;
+            sceKernelAvailableDirectMemorySize(0, sceKernelGetDirectMemorySize(), 0x10000, &at, &largest);
+            struct ps5_heap_stats heap = {0};
+            ps5_heap_stats(&heap);
+            extern uint64_t radv_ps5_allocated_bytes;
+            fprintf(stderr, "[ps5] memory floor: %llu MiB free (largest piece %llu MiB, %llu pieces) is under the floor of %llu MiB: "
+                    "closing the title before the console runs out (direct memory %llu MiB: guest pages %llu MiB, heap %llu MiB, "
+                    "the driver's buffers %llu MiB)\n",
+                    (unsigned long long)(room >> 20), (unsigned long long)(largest >> 20), (unsigned long long)pieces,
+                    (unsigned long long)(floor >> 20), (unsigned long long)(sceKernelGetDirectMemorySize() >> 20),
+                    (unsigned long long)(committed_bytes >> 20), (unsigned long long)(heap.mapped_bytes >> 20),
+                    (unsigned long long)(__atomic_load_n(&radv_ps5_allocated_bytes, __ATOMIC_RELAXED) >> 20));
+            static struct ps5_notification note;
+            snprintf(note.message, sizeof note.message,
+                     "Longshot ran out of memory and was closed to keep the console safe. Lower the resolution or turn off "
+                     "frame generation in the menu, then load your last save.");
+            (void)sceKernelSendNotificationRequest(0, &note, sizeof note, 0);
+            hos_ps5_exit(3);
+        }
+        sceKernelUsleep(room < (1ull << 30) ? 25000 : 250000);
+    }
+    return NULL;
+}
+/* (host/hos_main.c: after longshot_env.txt is read, which may set the floor) */
+void hos_ps5_memory_floor_start(void) {
+    if (!floor_bytes()) {
+        fprintf(stderr, "[ps5] memory floor: off (HOS_PS5_MEM_FLOOR_MB=0)\n");
+        return;
+    }
+    fprintf(stderr, "[ps5] memory floor: the title closes itself under %llu MiB of free direct memory\n",
+            (unsigned long long)(floor_bytes() >> 20));
+    pthread_t t;
+    if (pthread_create(&t, NULL, memory_floor_watch, NULL) == 0) pthread_detach(t);
+}
+
 /* HOS_PS5_ZERO_SCAN=1: how much of the game's backed memory holds nothing but zeros, by 64 KiB unit (pages it never wrote, or
    cleared: what a first-touch commit would not have backed). Read 64 MiB at a time under the window's lock, so no unit goes
    away under the read; units the game has made unreadable are left out */
@@ -1277,10 +1337,3 @@ void hos_ps5_cpu_meter(void) {
     if (pthread_create(&t, NULL, cpu_meter, NULL) == 0) pthread_detach(t);
 }
 
-/* The console's largest free direct-memory piece now (the renderer's budget: gpu/vk/vk_vma.cpp ps5_render_budget) */
-uint64_t hos_ps5_direct_free(void) {
-    int64_t at = 0;
-    size_t largest = 0;
-    if (sceKernelAvailableDirectMemorySize(0, sceKernelGetDirectMemorySize(), 0x10000, &at, &largest) != 0) return 0;
-    return largest;
-}
