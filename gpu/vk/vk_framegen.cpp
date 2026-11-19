@@ -408,6 +408,7 @@ bool neural_frames(VkCommandBuffer cmd, int set, int prev, int cur, int n, const
     // (the generator reads its inputs as sampled images in the read-only layout and writes the output in GENERAL: framegen.h)
     for (int i : {prev, cur})
         neural_layout(cmd, fg.frames[i].image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    ::mkwvk::rec::boundary(::mkwvk::rec::B_DIRECT);   // (PS5_MihawkGen records into cmd directly, outside vk_work.h)
     for (int k = 0; k < n; k++) {
         const VkImageView a = fg.frames[prev].view, b = fg.frames[cur].view;
         const fg_frame_pair pair{a, b, a, b, b, t[k]};   // (the network reads the two colours only)
