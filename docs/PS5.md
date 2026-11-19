@@ -148,10 +148,11 @@ the title's folder (`/data/homebrew/PPSA99025/lossless/Lossless.dll`); ProsperoE
 the file the row does not show the value. It makes the frames of 2x to 4x and of Auto; above 4x the renderer's own
 does.
 
-The code is in `gpu/vk/lsfg`: 26 files from [PS5SX2](https://github.com/Swordpdf/PS5SX2)
-(`ps5/coreorbis/orbis-shims/lsfg`, GPL-3.0-or-later), which took them from the Eden emulator, which took them from
-[lsfg-vk](https://github.com/PancakeTAS/lsfg-vk). `gpu/vk/lsfg/PROVENANCE.md` has the revisions and what was changed
-here. Not built on Windows or Linux: `ps5/build.py` alone compiles the folder.
+The code is 26 files from [PS5SX2](https://github.com/Swordpdf/PS5SX2) (`ps5/coreorbis/orbis-shims/lsfg`,
+GPL-3.0-or-later), which took them from the Eden emulator, which took them from
+[lsfg-vk](https://github.com/PancakeTAS/lsfg-vk): 22 as they are in `third_party/lsfg`, and the four changed for Longshot
+in `gpu/vk/lsfg`. Each folder's `PROVENANCE.md` has the revisions and what was changed. Not built on Windows or Linux:
+`ps5/build.py` alone compiles them.
 
 ## Threaded rendering
 

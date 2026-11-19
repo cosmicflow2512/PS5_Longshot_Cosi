@@ -39,7 +39,7 @@
 #endif
 #include "vk_texture.h"
 #ifdef LONGSHOT_LSFG
-#include "lsfg/lsfg_backend.h"   // (Lossless Scaling's frame generation: gpu/vk/lsfg)
+#include "lsfg_backend.h"   // (Lossless Scaling's frame generation: gpu/vk/lsfg over third_party/lsfg, ps5/build.py)
 namespace mkwvk {
 extern VmaAllocator vma;   // (vk_vma.cpp)
 }
@@ -639,6 +639,7 @@ bool lsfg_feed(VkCommandBuffer cmd, int cur, bool blend) {
                         {fg.w, fg.h, 1}};
     vkCmdCopyImage(cmd, fg.frames[cur].image, VK_IMAGE_LAYOUT_GENERAL, in, VK_IMAGE_LAYOUT_GENERAL, 1, &c);
     full_barrier(cmd);
+    ::mkwvk::rec::boundary(::mkwvk::rec::B_DIRECT);   // (the chain records into cmd directly, outside vk_work.h)
     const bool made = lsfgen.be->RecordShared(cmd);   // (the frames themselves: lsfg_take, each at its moment)
     note_work();   // (the chain's dispatches are not counted: the barriers after them are not left out)
     full_barrier(cmd);
@@ -654,6 +655,7 @@ bool lsfg_feed(VkCommandBuffer cmd, int cur, bool blend) {
 /// The frame at t of the way between the last two (after lsfg_feed said true; the chain's nearest moment) into a set's
 /// frame, w x h R8G8B8A8 in GENERAL
 void lsfg_take(VkCommandBuffer cmd, VkImage out, float t) {
+    ::mkwvk::rec::boundary(::mkwvk::rec::B_DIRECT);   // (the chain records into cmd directly, outside vk_work.h)
     lsfgen.off += std::fabs(lsfgen.be->RecordGeneration(cmd, t) - t);
     note_work();
     full_barrier(cmd);

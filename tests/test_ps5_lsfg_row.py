@@ -1,6 +1,7 @@
 """On the console the Frame generation by row offers Lossless Scaling, with the player's own Lossless.dll there.
 
-gpu/vk/lsfg is PS5SX2's port of the Eden emulator's lsfg-vk (PROVENANCE.md); its shaders are read from the player's file.
+third_party/lsfg is PS5SX2's port of the Eden emulator's lsfg-vk as it is, gpu/vk/lsfg its four files changed for Longshot
+(each folder's PROVENANCE.md); its shaders are read from the player's file.
 gpu/vk/fg_by.h says which of the console's two generators a value asks for, never both at once; compiled here alone.
 
 python -I -B tests/test_ps5_lsfg_row.py [--cxx g++]
@@ -53,16 +54,25 @@ static_assert(!wants_network(kLossless, true), "never the network and the chain 
 static_assert(wants_network(kLossless, false), "the file not read: the network's frames, not none");
 int main() { return 0; }
 """, a.cxx)
-    files = sorted(f.name for f in (VK / "lsfg").iterdir())
-    spdx = [f for f in files if f.endswith((".cpp", ".h")) and "SPDX-License-Identifier: GPL-3.0-or-later" not in
-            (VK / "lsfg" / f).read_text(encoding="utf-8")]
+    third = ROOT / "third_party" / "lsfg"
+    ours = sorted(f.name for f in (VK / "lsfg").iterdir())
+    theirs = sorted(f.name for f in third.iterdir())
+    spdx = [str(d / f) for d, names in ((VK / "lsfg", ours), (third, theirs)) for f in names
+            if f.endswith((".cpp", ".h")) and "SPDX-License-Identifier: GPL-3.0-or-later" not in (d / f).read_text(encoding="utf-8")]
     build = (ROOT / "ps5" / "build.py").read_text(encoding="utf-8")
     docs = (ROOT / "docs" / "PS5.md").read_text(encoding="utf-8")
     checked([
-        ("PROVENANCE.md" in files and "github.com/Swordpdf/PS5SX2" in (VK / "lsfg" / "PROVENANCE.md").read_text(encoding="utf-8"),
-         "gpu/vk/lsfg has no PROVENANCE.md naming where it came from"),
-        (not spdx, "files of gpu/vk/lsfg without their SPDX line: " + ", ".join(spdx)),
-        ("LONGSHOT_LSFG" in build, "ps5/build.py does not compile gpu/vk/lsfg"),
+        ("PROVENANCE.md" in theirs and "github.com/Swordpdf/PS5SX2" in (third / "PROVENANCE.md").read_text(encoding="utf-8"),
+         "third_party/lsfg has no PROVENANCE.md naming where it came from"),
+        ("PROVENANCE.md" in ours and "third_party/lsfg" in (VK / "lsfg" / "PROVENANCE.md").read_text(encoding="utf-8"),
+         "gpu/vk/lsfg has no PROVENANCE.md saying what it changed"),
+        (not set(ours) & set(theirs) - {"PROVENANCE.md"}, "a file both in gpu/vk/lsfg and in third_party/lsfg"),
+        (not spdx, "files of the lsfg folders without their SPDX line: " + ", ".join(spdx)),
+        ("LONGSHOT_LSFG" in build and '"third_party", "lsfg"' in build, "ps5/build.py does not compile third_party/lsfg"),
+        (build.index('os.path.join(VK, "lsfg"), "-I" + LSFG') > 0, "gpu/vk/lsfg is not before third_party/lsfg on the include path"),
+        ("::mkwvk::rec::boundary(::mkwvk::rec::B_DIRECT);   // (the chain records into cmd directly, outside vk_work.h)\n    const bool made = lsfgen.be->RecordShared(cmd);" in framegen
+         and "void lsfg_take(VkCommandBuffer cmd, VkImage out, float t) {\n    ::mkwvk::rec::boundary(::mkwvk::rec::B_DIRECT);" in framegen,
+         "the chain records into cmd without draining the recorder thread first (RX_VK_RECORDER=thread)"),
         ("if (!fg_by::wants_lossless(fg.by)) return false;" in framegen, "Lossless Scaling's chain is not asked for by the row"),
         ("framegen_lossless_file() ? fg_by::kMost : fg_by::kMihawk" in menu,
          "without a Lossless.dll the row still offers Lossless Scaling"),
