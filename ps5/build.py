@@ -162,6 +162,9 @@ def jobs_for(rt64, gen_dir):
     out.append((os.path.join(gen_dir, "ui_fonts.cpp"), os.path.join(OUT, "obj", "vk_ui_fonts.o"), COMMON + ["-O0", "-w"], ""))
     # (the files that include Dear ImGui: nx2/build.py's imgui_users, Longshot v3's crash window among them)
     IMGUI_USERS = ("vk_imgui.cpp", "vk_menu.cpp", "vk_crash_window.cpp")
+    # (the start-up screen's logo, gen/longshot_logo.h, is in vk_imgui.cpp's key: a new picture compiles it again)
+    logo_h = os.path.join(gen_dir, "longshot_logo.h")
+    logo_digest = hashlib.sha1(open(logo_h, "rb").read()).hexdigest() if os.path.exists(logo_h) else ""
     for s in upstream.vk_sources():
         if os.path.basename(s) == "vk_ngx_msvc_rt.cpp":
             continue
@@ -175,7 +178,8 @@ def jobs_for(rt64, gen_dir):
             (["-DHOOKSHOT_MIHAWKGEN", "-I" + os.path.join(MIHAWKGEN, "framegen", "include")]
              if HAS_MIHAWKGEN and os.path.basename(s) == "vk_framegen.cpp" else [])
         out.append((s, os.path.join(OUT, "obj", "vk_" + rel + ".o"), fl,
-                    lib_digest if lib else vk_digest + (imgui_digest if os.path.basename(s) in IMGUI_USERS else "")))
+                    lib_digest if lib else vk_digest + (imgui_digest if os.path.basename(s) in IMGUI_USERS else "") +
+                    (logo_digest if os.path.basename(s) == "vk_imgui.cpp" else "")))
     # (Lossless Scaling's frame generation from the player's own Lossless.dll: third_party/lsfg, PS5SX2's port as it is, and
     # gpu/vk/lsfg, its four files changed for Longshot, found first: their names are the same)
     for lsfg_dir in (os.path.join(VK, "lsfg"), LSFG):
@@ -238,7 +242,8 @@ def main():
     os.makedirs(os.path.join(OUT, "obj"), exist_ok=True)
     rt64 = rtgen.write(os.path.join(OUT, "rt64"))
     gen_dir = os.path.join(OUT, "gen")
-    logo_rgba.write(os.path.join(gen_dir, "longshot_logo.h"))
+    # (the start-up screen shows the title's console icon, the one on the home screen, not the PC build's logo)
+    logo_rgba.write(os.path.join(gen_dir, "longshot_logo.h"), os.path.join(ROOT, "ps5", "sce_sys", "icon0.png"))
     ui_fonts.write(os.path.join(gen_dir, "ui_fonts.cpp"))
     if a.kit and not os.path.exists(os.path.join(GEN, "a64_suyu.h")):
         # (no lift here: rt64/a64.h, which the runtime includes, includes the lift's two headers. a64_suyu.h is a64-kit's own,
