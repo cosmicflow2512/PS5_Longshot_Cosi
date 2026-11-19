@@ -108,6 +108,11 @@ PS5_HOST=<console address> python3 ps5/tools/run.py NAME --seconds 150      # kl
 `ps5/tools/live.py press '0:A,5:LDOWN/2500'` and `ps5/tools/live.py shot`. From the autosave in Link's house,
 `LDOWN/2500` walks out into the forest.
 
+The capture tools see only the console's shell, not the title: for screenshots of the Insert menu add
+`--env RX_VK_SHOT_MENU=1` (the menu drawn into each shot) and steer it with `--env 'RX_VK_MENU_SCRIPT=45:INS,48:TABR,...'`
+(keys in docs/development.md). `--env HOS_PS5_LANG_ID=<number>` stands in for the console's language (the
+SCE_SYSTEM_PARAM_LANG numbers: 1 English (US), 17 Portuguese (Brazil), 12 Finnish, which the game does not have).
+
 ## Test console
 
 | What | Where |

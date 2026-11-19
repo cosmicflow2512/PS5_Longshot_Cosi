@@ -4561,7 +4561,13 @@ void do_present(const nvn_tex* t, const int crop[4]) {
                                                         : VK_NULL_HANDLE;
                 if (fx_img) full_barrier(r.cmd), blit_crop(r.cmd, fx_img, kShotW, kShotH, nullptr, shot_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, kShotW, kShotH);
                 else blit_crop(r.cmd, src, sw, sh, crop, shot_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, kShotW, kShotH);
-                if (shot_menu && dev.offscreen) menu_record_image(r.cmd, shot_image, shot_view, kShotW, kShotH);   // (headless: the menu over the shot)
+                // (the menu over the shot: headless, and (longshot) the PS5, whose capture tools see only the shell, for screenshots of
+                // the menu in test runs. A window draws it again over the present: its own pass, recorded after this one)
+#ifdef __PROSPERO__
+                if (shot_menu) menu_record_image(r.cmd, shot_image, shot_view, kShotW, kShotH);
+#else
+                if (shot_menu && dev.offscreen) menu_record_image(r.cmd, shot_image, shot_view, kShotW, kShotH);
+#endif
                 image_barrier(r.cmd, shot_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
                 const VkBufferImageCopy c{0, 0, 0, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, {0, 0, 0}, {kShotW, kShotH, 1}};
                 vkCmdCopyImageToBuffer(r.cmd, shot_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, shot_bufs[presents & 1], 1, &c);
@@ -5704,7 +5710,14 @@ int presents_ahead() {   // (RX_VK_PRESENTS_AHEAD=<n>: how many presents the gam
 int render_thread_mode() {
     static const int mode = [] {
         const char* e = getenv("RX_VK_ASYNC");
+#ifdef __PROSPERO__
+        // (PS5: the row never starts the render thread. Its buffer pools have no mirrors, so a replay behind the game reads
+        // memory the game has moved on from, and with it the console hung: there On is the recorder thread alone,
+        // vk_menu.cpp menu_threaded_rendering. RX_VK_ASYNC=1 still asks for it, for testing)
+        return e ? atoi(e) : 0;
+#else
         return e ? atoi(e) : menu_threaded_rendering() ? 1 : 0;
+#endif
     }();
     return mode;
 }

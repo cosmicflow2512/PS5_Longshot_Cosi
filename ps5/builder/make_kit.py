@@ -186,6 +186,7 @@ Built from PS5_Longshot %s. No part of it comes from a game.
 | obj/host_*, obj/vk_* | Longshot's runtime and Vulkan back end (MagicBeanDev/Longshot, with PS5_Hookshot's port), Eden's shader recompiler, sirit, suyu's texture decoders, Dear ImGui | GPL-3.0 (Dear ImGui: MIT) |
 | obj/opus_* | libopus 1.5.2 | BSD-3-Clause |
 | obj/mihawkgen_*, title/framegen | PS5_MihawkGen %s | GPL-3.0-or-later |
+| obj/lsfg_* | Lossless Scaling's frame generation on Vulkan (third_party/lsfg and gpu/vk/lsfg: PS5SX2's port of the Eden emulator's lsfg-vk); its shaders are read from the player's own Lossless.dll, not shipped | GPL-3.0-or-later |
 | lib/libvulkan_radeon.ps5.a | Mesa's RADV built by PS5_Vulkan %s from PS5_Mesa | MIT |
 | lib/libav*.a, libswscale.a | FFmpeg | LGPL-2.1-or-later |
 | lib/libdav1d.a | dav1d | BSD-2-Clause |

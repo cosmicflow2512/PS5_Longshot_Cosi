@@ -45,6 +45,7 @@ OUT = os.path.join(ROOT, "work", "ps5")
 HOST, POSIX, PS5 = (os.path.join(ROOT, "host", d) for d in ("", "posix", "ps5"))
 VK = os.path.join(ROOT, "gpu", "vk")
 OPUS = os.path.join(ROOT, "third_party", "opus")
+LSFG = os.path.join(ROOT, "third_party", "lsfg")
 # PS5_MihawkGen (github.com/mihawk-99/PS5_MihawkGen, GPL-3.0-or-later), checked out beside this repository: its generator
 # (framegen/src) is compiled in and its trained network goes beside the game, as PS5_RetroArch's build has them. Absent:
 # the renderer's own frame interpolation.
@@ -147,6 +148,9 @@ def jobs_for(rt64, gen_dir):
                             os.path.join(ROOT, "gpu", "third_party", "suyu", "video_core", "textures"))
     # Dear ImGui (the menu and the overlays: vk_imgui.cpp, vk_menu.cpp), as nx2/build.py compiles it; the game's font files
     # are zstd frames, read with the console's zstd (ps5/tools/build-zstd.sh), not third_party/zstd's second copy
+    # (Lossless Scaling's frame generation: gpu/vk/lsfg's three changed files before third_party/lsfg's, the same names)
+    lsfg_fl = ["-DLONGSHOT_LSFG", "-I" + os.path.join(VK, "lsfg"), "-I" + LSFG]
+    lsfg_digest = tree_digest(LSFG)
     imgui = os.path.join(ROOT, "third_party", "imgui")
     imgui_fl = ["-I" + imgui, "-I" + os.path.join(DEPS, "zstd", "include"), "-DIMGUI_IMPL_VULKAN_NO_PROTOTYPES",
                 "-DIMGUI_DISABLE_DEFAULT_SHELL_FUNCTIONS", "-DIMGUI_DISABLE_WIN32_FUNCTIONS", "-DIMGUI_DISABLE_DEMO_WINDOWS",
@@ -163,18 +167,19 @@ def jobs_for(rt64, gen_dir):
         lib = os.path.relpath(s, VK).split(os.sep)[0] in ("eden", "sirit")
         fl = vfl + ([shader_stamp] if os.path.basename(s) == "vk_shader.cpp" else []) + \
             ([stamp] if os.path.basename(s) == "vk_menu.cpp" else []) + \
-            (["-DLONGSHOT_LSFG"] if os.path.basename(s) == "vk_framegen.cpp" else []) + \
+            (lsfg_fl if os.path.basename(s) == "vk_framegen.cpp" else []) + \
             (imgui_fl if os.path.basename(s) in ("vk_imgui.cpp", "vk_menu.cpp") else []) + \
             (["-DHOOKSHOT_MIHAWKGEN", "-I" + os.path.join(MIHAWKGEN, "framegen", "include")]
              if HAS_MIHAWKGEN and os.path.basename(s) == "vk_framegen.cpp" else [])
         out.append((s, os.path.join(OUT, "obj", "vk_" + rel + ".o"), fl,
                     lib_digest if lib else vk_digest + (imgui_digest if os.path.basename(s) in ("vk_imgui.cpp", "vk_menu.cpp") else "")))
-    # (Lossless Scaling's frame generation from the player's own Lossless.dll: gpu/vk/lsfg, PS5SX2's port; RX_VK_LSFG=1)
-    lsfg_dir = os.path.join(VK, "lsfg")
-    for f in sorted(os.listdir(lsfg_dir)):
-        if f.endswith(".cpp"):
-            out.append((os.path.join(lsfg_dir, f), os.path.join(OUT, "obj", "lsfg_" + f[:-4] + ".o"),
-                        vfl + ["-DLONGSHOT_LSFG"], vk_digest))
+    # (Lossless Scaling's frame generation from the player's own Lossless.dll: third_party/lsfg, PS5SX2's port as it is, and
+    # gpu/vk/lsfg, its three files changed for Longshot, found first: their names are the same)
+    for lsfg_dir in (os.path.join(VK, "lsfg"), LSFG):
+        for f in sorted(os.listdir(lsfg_dir)):
+            if f.endswith(".cpp"):
+                out.append((os.path.join(lsfg_dir, f), os.path.join(OUT, "obj", "lsfg_" + f[:-4] + ".o"),
+                            vfl + lsfg_fl, vk_digest + lsfg_digest))
     if HAS_MIHAWKGEN:   # (its Vulkan calls through the back end's loaded pointers: vk_loader.h, as every unit of gpu/vk)
         mfl = vfl + ["-include", os.path.join(VK, "vk_loader.h"), "-I" + os.path.join(MIHAWKGEN, "framegen", "include"),
                      "-I" + os.path.join(MIHAWKGEN, "framegen", "src")]

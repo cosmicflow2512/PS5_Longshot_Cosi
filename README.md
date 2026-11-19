@@ -163,6 +163,15 @@ Measured on a PS5 Pro, in Kokiri Forest, at 1920x1080:
 
 [ps5/README.md](ps5/README.md) has the measurements.
 
+### Language
+
+The game starts in the console's language (Settings > System > Language) when the game has it: English (US and UK),
+French (France and Canada), German, Italian, Spanish (Spain and Latin America), Portuguese (Brazil, also given to a
+console set to Portuguese (Portugal)), Dutch, Polish, Russian, Japanese, Korean and Chinese (Simplified and
+Traditional). Any other language starts it in English (US). The menu's **Game language** row (Gameplay tab) has
+**Follow the console** first, then each of the game's languages: pick one to keep it whatever the console's is, or
+Follow the console to go back. It applies after a restart, which the menu offers when you close it.
+
 ### Updating
 
 To update an existing `PPSA99198` installation, rebuild with the new builder and copy the resulting folder over
@@ -177,6 +186,7 @@ On the console, everything of Longshot's is in `/data/homebrew/PPSA99198`:
 | `eboot.bin`, `image.bin` | The title, made from your game. |
 | `user/` | Your saves. |
 | `longshot_options.ini` | Your settings. |
+| `language.txt` | The menu's Game language: a language's code, or no code line for Follow the console. |
 | `longshot_env.txt` | The switches of the profile the folder was built for. A line you add is kept until you copy a new folder over it. |
 | `cache/`, `radv-shader-cache/` | Shaders made as you play. Safe to delete: they are made again. |
 | `logs/`, `bug-reports/` | What the title wrote about its runs. |

@@ -36,7 +36,7 @@
 #endif
 #include "vk_texture.h"
 #ifdef LONGSHOT_LSFG
-#include "lsfg/lsfg_backend.h"   // (Lossless Scaling's frame generation: gpu/vk/lsfg)
+#include "lsfg_backend.h"   // (Lossless Scaling's frame generation: gpu/vk/lsfg over third_party/lsfg, ps5/build.py)
 namespace mkwvk {
 extern VmaAllocator vma;   // (vk_vma.cpp)
 }
@@ -423,6 +423,7 @@ bool neural_frames(VkCommandBuffer cmd, int set, int prev, int cur, int n, const
     // (the generator reads its inputs as sampled images in the read-only layout and writes the output in GENERAL: framegen.h)
     for (int i : {prev, cur})
         neural_layout(cmd, fg.frames[i].image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    ::mkwvk::rec::boundary(::mkwvk::rec::B_DIRECT);   // (PS5_MihawkGen records into cmd directly, outside vk_work.h)
     for (int k = 0; k < n; k++) {
         const VkImageView a = fg.frames[prev].view, b = fg.frames[cur].view;
         const fg_frame_pair pair{a, b, a, b, b, t[k]};   // (the network reads the two colours only)
@@ -536,6 +537,7 @@ bool lsfg_feed(VkCommandBuffer cmd, int cur, bool blend) {
                         {fg.w, fg.h, 1}};
     vkCmdCopyImage(cmd, fg.frames[cur].image, VK_IMAGE_LAYOUT_GENERAL, in, VK_IMAGE_LAYOUT_GENERAL, 1, &c);
     full_barrier(cmd);
+    ::mkwvk::rec::boundary(::mkwvk::rec::B_DIRECT);   // (the chain records into cmd directly, outside vk_work.h)
     const bool made = lsfgen.be->RecordShared(cmd);   // (the frames themselves: lsfg_take, each at its moment)
     note_work();   // (the chain's dispatches are not counted: the barriers after them are not left out)
     full_barrier(cmd);
@@ -551,6 +553,7 @@ bool lsfg_feed(VkCommandBuffer cmd, int cur, bool blend) {
 /// The frame at t of the way between the last two (after lsfg_feed said true; the chain's nearest moment) into a set's
 /// frame, w x h R8G8B8A8 in GENERAL
 void lsfg_take(VkCommandBuffer cmd, VkImage out, float t) {
+    ::mkwvk::rec::boundary(::mkwvk::rec::B_DIRECT);   // (the chain records into cmd directly, outside vk_work.h)
     lsfgen.off += std::fabs(lsfgen.be->RecordGeneration(cmd, t) - t);
     note_work();
     full_barrier(cmd);

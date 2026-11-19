@@ -1,5 +1,6 @@
 /* nn::oe (applet), nn::account, nn::time, nn::pl, nn::err: what a game asks the system about itself.
-   The answers describe a docked console in English (HOS_LANGUAGE / language.txt: another language) with one user,
+   The answers describe a docked console in English (HOS_LANGUAGE / language.txt: another language; PS5: the console's
+   language when language.txt names none) with one user,
    "Player". */
 #include "hos.h"
 #include "hos_paths.h"
@@ -25,6 +26,34 @@ static const struct { const char *code, *name; } languages[] = {
     {"pt-BR", "Portuguese (Brazil)"}, {"nl", "Dutch"},                {"pl", "Polish"},              {"ru", "Russian"},
     {"ja", "Japanese"},              {"ko", "Korean"},                {"zh-Hans", "Chinese (Simplified)"}, {"zh-Hant", "Chinese (Traditional)"},
 };
+static const char pc_template_head[] =
+    "# The game's language. Change the line below to one of the codes listed here, save, and start the game again.\n\nen-US\n\n";
+#ifdef __PROSPERO__
+/* (PS5) language.txt has no code line until the player picks one (the menu's Game language row writes it): the game follows the
+   console's language until then. A file the game wrote on its first start before this (pc_template_head's en-US, the player's
+   choice in none of it) is written again this way, so a console in another language is followed there too */
+static const char ps5_template_head[] =
+    "# The game's language: the console's own (Settings > System > Language), English (US) when the game does not have it.\n"
+    "# To keep one whatever the console's is, write one of the codes listed here on a line of its own below (or pick it in the\n"
+    "# menu's Game language row), save, and start the game again.\n\n";
+const char *hos_ps5_console_language(int *id);   /* (host/ps5/console_language.c) */
+static void console_template(const char *path) {
+    char old[1024], now[1024];
+    int n = snprintf(old, sizeof old, "%s", pc_template_head);
+    for (size_t i = 0; i < sizeof languages / sizeof *languages; i++)
+        n += snprintf(old + n, sizeof old - n, "# %-8s %s\n", languages[i].code, languages[i].name);
+    FILE *f = fopen(path, "rb");
+    if (!f) return;
+    const size_t got = fread(now, 1, sizeof now, f);
+    fclose(f);
+    if (got != (size_t)n || memcmp(now, old, got) != 0) return;
+    if ((f = fopen(path, "w")) == NULL) return;
+    fputs(ps5_template_head, f);
+    for (size_t i = 0; i < sizeof languages / sizeof *languages; i++) fprintf(f, "# %-8s %s\n", languages[i].code, languages[i].name);
+    fclose(f);
+    hos_log("oe: language.txt was the first start's English (US), no choice: it follows the console's language now");
+}
+#endif
 static const char *desired_language(void) {
     static char lang[8];
     if (lang[0]) return lang;
@@ -39,6 +68,9 @@ static const char *desired_language(void) {
         DWORD n = hos_game_path_a(path, 260);
         while (n > 0 && path[n - 1] != 92 && path[n - 1] != 47) n--;
         snprintf(path + n, sizeof path - n, "language.txt");
+#endif
+#ifdef __PROSPERO__
+        console_template(path);
 #endif
         FILE *f = fopen(path, "r");
         if (f) {
@@ -66,11 +98,28 @@ static const char *desired_language(void) {
             }
             fclose(f);
         } else if ((f = fopen(path, "w")) != NULL) {
-            fputs("# The game's language. Change the line below to one of the codes listed here, save, and start the game again.\n\nen-US\n\n", f);
+#ifdef __PROSPERO__
+            fputs(ps5_template_head, f);
+#else
+            fputs(pc_template_head, f);
+#endif
             for (size_t i = 0; i < sizeof languages / sizeof *languages; i++) fprintf(f, "# %-8s %s\n", languages[i].code, languages[i].name);
             fclose(f);
         }
     }
+#ifdef __PROSPERO__
+    /* (no language picked: the console's own, English when the game does not have it) */
+    if (!want[0]) {
+        int id;
+        const char *console = hos_ps5_console_language(&id);
+        if (console) {
+            snprintf(want, sizeof want, "%s", console);
+            from = "the console's language";
+        } else {
+            hos_log("oe: the console's language (%d) is not one the game has: English (US)", id);
+        }
+    }
+#endif
     want[strcspn(want, " \t\r\n")] = 0;
     snprintf(lang, sizeof lang, "en-US");
     int found = 0;
@@ -80,6 +129,8 @@ static const char *desired_language(void) {
     else hos_log("oe: language %s (%s)", lang, from);
     return lang;
 }
+/* (the menu's Game language and Auto, gpu/vk/vk_menu_i18n.cpp: the same answer) */
+const char *hos_desired_language(void) { return desired_language(); }
 HLE(_ZN2nn2oe18GetDesiredLanguageEv) {
     uint64_t v = 0;
     memcpy(&v, desired_language(), strlen(desired_language()));
