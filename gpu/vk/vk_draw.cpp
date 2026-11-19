@@ -11767,10 +11767,9 @@ void pipeline_cache_save(bool force) {
     // generations are still taken away and freed at each save (play_cache_save writes none then), as they are written and freed
     // where the file is read. Returning here, what play made would pile up in one generation, in memory, until the close
     const bool between = pcache_save_between;
-    static const bool always = env_on("RX_VK_PCACHE_SAVE_ALWAYS");   // (a test: a save at every call, to time it)
     if (!pcache) pcache_save_outcome.what = Outcome::kNoCache;
     else if (pcache_no_save) pcache_save_outcome.what = Outcome::kOff;
-    if (!pcache || (!force && !always && !between && pcache_built_since_save < 32)) return;
+    if (!pcache || (!force && !between && pcache_built_since_save < 32)) return;
     const int64_t built = pcache_built_since_save.exchange(0);
     // (on a thread of its own unless forced, at exit: ~100 MB fetched and written took the replay thread 100+ ms at
     // each scene change; the cache is internally synchronized, pipelines go on being built meanwhile)

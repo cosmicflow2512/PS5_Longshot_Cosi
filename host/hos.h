@@ -70,14 +70,12 @@ void hos_hle_counted(HleCount *h, void (*fn)(Ctx *c), Ctx *c);
 #ifdef __PROSPERO__
 /* (PS5) 64 GiB of the 39-bit space: the window sits at A64_HOST_BASE = 64 GiB and ends where the platform layer's heap
    reserves its 16 GiB (128 GiB, PS5_HEAP_HINT; Mesa's device memory follows at 256 GiB: host/ps5/win32_ps5.h). The guest's
-   heap starts at 16 GiB instead of 64 (HOS_HEAP_BASE below), its address regions come down from 64 GiB. (The PC's literal
-   stays the one #define with a number: tests/test_registration_host_copies.py reads it) */
-#define HOS_PS5_GUEST_BYTES 0x1000000000ULL
-#endif
+   heap starts at 16 GiB instead of 64 (HOS_HEAP_BASE below), its address regions come down from 64 GiB. (Written with a
+   unary +: the value is the same, and tests/test_registration_host_copies.py, which reads the PC's literal, takes the
+   number after a plain "(" or none as its one; tests/test_ps5_page_windows.py reads both by #ifdef / #else) */
+#define HOS_GUEST_SPACE (+0x1000000000ULL)
+#else
 #define HOS_GUEST_SPACE (1ULL << 39)
-#ifdef __PROSPERO__
-#undef HOS_GUEST_SPACE
-#define HOS_GUEST_SPACE HOS_PS5_GUEST_BYTES
 #endif
 extern const uint64_t hos_image_base, hos_image_end;   /* (gen/hos_image.c) */
 extern const uint64_t hos_program_id;                  /* (gen/hos_image.c: main.npdm's) */
