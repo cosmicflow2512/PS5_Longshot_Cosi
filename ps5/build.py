@@ -167,6 +167,7 @@ def jobs_for(rt64, gen_dir):
             ([stamp] if os.path.basename(s) == "vk_menu.cpp" else []) + \
             (["-DLONGSHOT_LSFG"] if os.path.basename(s) == "vk_framegen.cpp" else []) + \
             (imgui_fl if os.path.basename(s) in IMGUI_USERS else []) + \
+            (["-I" + os.path.join(VK, "fsr4")] if os.path.basename(s) == "vk_fsr4.cpp" else []) + \
             (["-DHOOKSHOT_MIHAWKGEN", "-I" + os.path.join(MIHAWKGEN, "framegen", "include")]
              if HAS_MIHAWKGEN and os.path.basename(s) == "vk_framegen.cpp" else [])
         out.append((s, os.path.join(OUT, "obj", "vk_" + rel + ".o"), fl,
@@ -177,6 +178,9 @@ def jobs_for(rt64, gen_dir):
         if f.endswith(".cpp"):
             out.append((os.path.join(lsfg_dir, f), os.path.join(OUT, "obj", "lsfg_" + f[:-4] + ".o"),
                         vfl + ["-DLONGSHOT_LSFG"], vk_digest))
+    # Native Vulkan AMD FSR 4.1.2 static compute-replay backend (gpu/vk/fsr4/fsr411.cpp, GPL-2.0-or-later, PR #41)
+    out.append((os.path.join(VK, "fsr4", "fsr411.cpp"), os.path.join(OUT, "obj", "fsr4_fsr411.o"),
+                vfl + ["-include", os.path.join(VK, "vk_loader.h"), "-I" + os.path.join(VK, "fsr4")], vk_digest))
     if HAS_MIHAWKGEN:   # (its Vulkan calls through the back end's loaded pointers: vk_loader.h, as every unit of gpu/vk)
         mfl = vfl + ["-include", os.path.join(VK, "vk_loader.h"), "-I" + os.path.join(MIHAWKGEN, "framegen", "include"),
                      "-I" + os.path.join(MIHAWKGEN, "framegen", "src")]
