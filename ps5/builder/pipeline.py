@@ -290,7 +290,55 @@ def link(kit, info, work, objects, lld, nm):
     return elf
 
 
-def title(kit, info, work, elf, native, out, model):
+# (longshot) The game's files the button prompts are drawn from (nx2/prompt_assets.py FONT, prompt_keys.LABEL_FONT, TEXTURES,
+# LAYOUTS, the dictionary), and the resource size table beside them: read out of the .nup alone, not the whole romfs
+PROMPT_ROMFS = ("Pack/ZsDic.pack.zs", "Font2/Scalable/External.Nin_Ounce_NVN2.bfotf.zs",
+                "Font2/Scalable/ClarimoUDPE-DemiBold.Nin_Ounce_NVN2.bfotf.zs",
+                "UI/Layout2Archive/Common.Product.100.Nin_Ounce_NVN2.bntx.zs",
+                "UI/Layout2Archive/Common.Product.100.Nin_Ounce_NVN2.blarc.zs")
+
+
+def prompts(kit, work, game, app):
+    """The button prompts of other controllers (host/prompts.c, the menu's Button prompts row): the game's icon font and
+    textures redrawn per controller into <title>/prompts, as the PC build makes them (nx2/make_game.py). Without that folder the
+    game shows the Switch's icons whatever the row says. Optional: a build without them is the same game"""
+    import importlib.util
+    if not os.path.isfile(game):
+        say("button prompts: not made (the game is a folder, not a .nup): the game shows the Switch's icons")
+        return
+    missing = [m for m in ("fontTools", "PIL", "astc_encoder", "texture2ddecoder") if importlib.util.find_spec(m) is None]
+    if missing:
+        say("button prompts: not made (this builder's Python has no %s): the game shows the Switch's icons" % ", ".join(missing))
+        return
+    src, env = python_env(kit, work)
+    romfs, made = os.path.join(work, "prompts-romfs"), os.path.join(work, "prompts")
+    code = ("import os, sys\n"
+            "sys.path.insert(0, os.path.join(sys.argv[1], 'nx2'))\n"
+            "import nup\n"
+            "n = nup.Nup(sys.argv[2]); t = nup.pick_title(n, None); want = set(sys.argv[4:]); got = 0\n"
+            "for rel, r in n.walk(t['romfs']):\n"
+            "    if rel in want or (rel.startswith('System/Resource/ResourceSizeTable.') and rel.endswith('.rsizetable.zs')):\n"
+            "        p = os.path.join(sys.argv[3], *rel.split('/')); os.makedirs(os.path.dirname(p), exist_ok=True)\n"
+            "        with open(p + '.part', 'wb') as g: n.copy_to(r, g, rel)\n"
+            "        os.replace(p + '.part', p); got += 1\n"
+            "print('button prompts: %d files of the game read' % got)\n")
+    try:
+        os.makedirs(romfs, exist_ok=True)
+        run([sys.executable, "-I", "-u", "-c", code, src, game, romfs] + list(PROMPT_ROMFS), env=env,
+            what="reading the files of the button prompts")
+        run([sys.executable, "-I", "-u", os.path.join(src, "nx2", "prompt_assets.py"), "--romfs", romfs, "--out", made,
+             "--incremental"], env=env, what="the button prompts")
+    except Stop as e:
+        shutil.rmtree(os.path.join(app, "prompts"), ignore_errors=True)
+        say("button prompts: not made (%s): the game shows the Switch's icons" % str(e).splitlines()[0])
+        return
+    shutil.rmtree(os.path.join(app, "prompts"), ignore_errors=True)
+    shutil.copytree(made, os.path.join(app, "prompts"), ignore=shutil.ignore_patterns("*.part", "*.tmp"))
+    size = sum(os.path.getsize(os.path.join(d, f)) for d, _, fs in os.walk(os.path.join(app, "prompts")) for f in fs)
+    say("button prompts: every controller's icons in prompts/ (%d MB): the menu's Button prompts row chooses" % (size >> 20))
+
+
+def title(kit, info, work, elf, native, out, model, game=None):
     step(5)
     app = os.path.join(out, info["title_id"])
     if os.path.exists(app):
@@ -307,6 +355,8 @@ def title(kit, info, work, elf, native, out, model):
     run([native, "self", "--inspect", "--file", os.path.join(app, "eboot.bin")], what="the check of eboot.bin")
     shutil.copytree(os.path.join(kit, "title"), app, dirs_exist_ok=True)
     shutil.copy2(os.path.join(work, "lift", "sa", "image", "image.bin"), os.path.join(app, "image.bin"))
+    if game:
+        prompts(kit, work, game, app)
     # ---- the console's profile ----
     profile = MODELS[model]
     param = os.path.join(app, "sce_sys", "param.json")
@@ -397,7 +447,7 @@ def build(a):
     gen = lift(kit, work, exefs, a.lift_jobs)
     objects = compile_game(kit, info, work, gen, clang, a.jobs or default_jobs())
     elf = link(kit, info, work, objects, lld, nm)
-    app = title(kit, info, work, elf, native, out, a.model)
+    app = title(kit, info, work, elf, native, out, a.model, a.game)
     say("@@done " + app)
     return app
 

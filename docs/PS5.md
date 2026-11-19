@@ -19,6 +19,7 @@ as a native PS5 title, **PPSA99198**, on my homebrew stack: Mesa's RADV from
 | Compile | The lifted game, `host/` and `gpu/vk` for `x86_64-sie-ps5` (Zen 2) | `ps5/build.py` |
 | Link | One executable with RADV linked in, signed as the console's fake SELF | `ps5/tools/link.sh` (PS5_VulkanTemplate's link) |
 | Install | `dist/PPSA99198` to `/data/homebrew/PPSA99198`; `romfs/` is read in place from your `.nup` on the console (`HOS_PS5_NUP`, else `/data/lichii/roms/oot/oot.nup`, else `/data/prosperoeden/roms/oot/oot.nup`) | FTP, `host/ps5/nup_romfs.c` |
+| Button prompts | The builder reads the few game files the icons are drawn from out of your `.nup` and runs `nx2/prompt_assets.py`, as the PC build does: `<title>/prompts/` with every controller's icons. The Controls page's Button prompts row (Auto: the DualSense's) then works; without the folder the game shows the Switch's icons | `ps5/builder/pipeline.py` `prompts`, `host/prompts.c` |
 
 Players do all of it with the Longshot PS5 Builder, a desktop program for Linux and Windows that carries everything but
 the game (`ps5/builder/README.md`). For development, `ps5/builder/build_kit.sh` fetches PS5_Mesa, PS5_PayloadSDK and
