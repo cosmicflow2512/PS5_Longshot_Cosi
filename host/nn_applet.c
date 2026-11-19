@@ -106,8 +106,7 @@ static const char *desired_language(void) {
             size_t n = (size_t)snprintf(text, sizeof text, "%s", pc_template_head);
 #endif
             for (size_t i = 0; i < sizeof languages / sizeof *languages && n < sizeof text; i++)
-                n += (size_t)snprintf(text + n, sizeof text - n, "# %-8s %s
-", languages[i].code, languages[i].name);
+                n += (size_t)snprintf(text + n, sizeof text - n, "# %-8s %s\n", languages[i].code, languages[i].name);
             if (n < sizeof text) hos_atomic_write(path, text, n);
         }
     }
