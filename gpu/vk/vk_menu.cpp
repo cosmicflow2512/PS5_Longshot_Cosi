@@ -406,7 +406,20 @@ const char* hn_dlss_pre_bloom(int v, int variant) {
 }
 /// The Game language row (opts.game_lang): language.txt's language, written once the row is left (game_lang_tick); the game
 /// reads it at its start
-const char* tx_game_lang(int v) { return i18n::game_lang_name(v); }
+// (the Game language row's help; PS5: with its first choice, Follow the console)
+#ifdef __PROSPERO__
+constexpr const char* kGameLangHelp =
+    "The game's own language, its text. Follow the console: the console's language, English (US) when the game does not "
+    "have it. Applies after a restart.";
+#else
+constexpr const char* kGameLangHelp = "The game's own language, its text. Applies after a restart.";
+#endif
+const char* tx_game_lang(int v) {
+#ifdef __PROSPERO__
+    if (v <= 0) return "Follow the console";   // (PS5: the row's first choice, vk_menu_i18n.cpp kFollow)
+#endif
+    return i18n::game_lang_name(v);
+}
 /// The Menu language row (opts.menu_lang): Auto, then each language by its own name (vk_menu_i18n.h)
 const char* tx_menu_lang(int v) {
     if (v <= 0) return "Auto (game's language)";
@@ -1815,7 +1828,7 @@ Row rows[] = {
      "Starts a launch with the most recent saved game: presses through the title screen and its file list. Does nothing "
      "until the game has a save. Applies after a restart.", nullptr, true, true},
     {TAB_GAMEPLAY, "Game language", &opts.game_lang, 0, i18n::game_lang_count() - 1, 1, tx_game_lang,
-     "The game's own language, its text. Applies after a restart.", nullptr, true, true},
+     kGameLangHelp, nullptr, true, true},
     {TAB_GAMEPLAY, "Menu language", &opts.menu_lang, 0, i18n::lang_count(), 1, tx_menu_lang, "The language of this menu.",
      hn_menu_lang, false, true},
     {TAB_GAMEPLAY, "Discord status", &opts.discord, 0, 1, 1, tx_onoff,

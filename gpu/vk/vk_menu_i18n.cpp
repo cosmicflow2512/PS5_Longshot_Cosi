@@ -25,6 +25,7 @@
 #include "../../host/hos_atomic_file.h"   // (language.txt is written whole or not at all)
 
 #ifdef __PROSPERO__
+extern "C" const char* hos_ps5_console_language(int* id);   // (host/ps5/console_language.c)
 extern "C" const char* hos_desired_language(void);   // (host/nn_applet.c: language.txt's, else the console's, else English (US))
 #endif
 
@@ -216,17 +217,39 @@ std::string& game_language_saved() {
     static std::string lang = [] {
         (void)game_language_started();   // (PS5: the host's reading first, which may write the first start's file again)
         const std::string txt = read_language_txt();
+#ifdef __PROSPERO__
+        return txt;   // (PS5: "" is Follow the console, the row's first choice)
+#else
         return txt.empty() ? game_language_started() : txt;
+#endif
     }();
     return lang;
 }
+#ifdef __PROSPERO__
+// (PS5) The Game language row's first choice, Follow the console: language.txt with no code line, so each start takes the
+// console's language (host/nn_applet.c), English (US) when the game does not have it. The languages come after it
+constexpr int kFollow = 1;
+#else
+constexpr int kFollow = 0;
+#endif
 }  // namespace
 
 const std::string& game_language() { return game_language_started(); }
-int game_lang_count() { return kGameLangCount; }
-const char* game_lang_code(int index) { return kGameLangs[std::clamp(index, 0, kGameLangCount - 1)].code; }
+int game_lang_count() { return kFollow + kGameLangCount; }
+const char* game_lang_code(int index) {
+#ifdef __PROSPERO__
+    if (index <= 0) {   // (Follow the console: the console's language now, English (US) when the game does not have it)
+        const char* c = hos_ps5_console_language(nullptr);
+        return c ? c : "en-US";
+    }
+#endif
+    return kGameLangs[std::clamp(index - kFollow, 0, kGameLangCount - 1)].code;
+}
 const char* game_lang_name(int index) {
-    const GameLang& g = kGameLangs[std::clamp(index, 0, kGameLangCount - 1)];
+#ifdef __PROSPERO__
+    if (index <= 0) return "Follow the console";
+#endif
+    const GameLang& g = kGameLangs[std::clamp(index - kFollow, 0, kGameLangCount - 1)];
     shown(g.code, g.name);
     return g.name;
 }
@@ -236,11 +259,12 @@ std::vector<std::pair<std::string, std::string>> names_shown_since() {
 }
 int game_lang_index() {
     for (int i = 0; i < kGameLangCount; i++)
-        if (same_code(game_language_saved(), kGameLangs[i].code)) return i;
+        if (same_code(game_language_saved(), kGameLangs[i].code)) return kFollow + i;
     return 0;
 }
 bool set_game_language(int index) {
-    const char* code = game_lang_code(index);
+    const bool follow = kFollow && index <= 0;   // (PS5: every code line taken out, the comments kept)
+    const char* code = follow ? "" : game_lang_code(index);
     std::vector<std::string> lines;
     if (FILE* f = fopen(language_txt().c_str(), "r")) {
         char line[512];
@@ -251,9 +275,9 @@ bool set_game_language(int index) {
     for (auto& l : lines) {
         const size_t a = l.find_first_not_of(" \t\r\n");
         if (set || a == std::string::npos || l[a] == '#') continue;
-        l = std::string(code) + "\n", set = true;
+        l = follow ? std::string() : std::string(code) + "\n", set = !follow;
     }
-    if (!set) lines.push_back(std::string(code) + "\n");
+    if (!set && !follow) lines.push_back(std::string(code) + "\n");
     // (written whole or not at all: beside language.txt and moved over it, so a kill, or a folder that cannot be written, keeps
     // language.txt as it was, and the row goes back to it)
     std::string text;
