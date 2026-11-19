@@ -1386,7 +1386,7 @@ const char* threaded_env() {
 /// (Auto's line says what Auto is: the CPU's rule with threaded::kAutoEnabled on, Off everywhere were it off. Its tiers are
 /// threaded::kAutoRenderCores and kAutoRecorderCores, 4 and 6 cores: tests/test_threaded_rendering.py holds the text to them)
 const char* hn_threaded(int v, int variant) {
-#ifdef __PROSPERO__   // (the console: On is the recorder thread alone, Auto is Off: menu_threaded_rendering)
+#ifdef __PROSPERO__   // (the console: On is the recorder thread alone, Auto is Off: threaded_choice)
     static const char* const t[] = {
         "The same as Off on the console.",
         "The game's drawing commands go to the GPU's driver from a thread of their own, beside the game's: less of the "
@@ -5775,7 +5775,8 @@ static const threaded::Choice& threaded_choice() {
         // (longshot, PS5 #44) Auto is Off. On is the player's choice and the recorder thread alone: the render thread is not
         // safe there (the buffer pools have no mirrors: a replay behind the game reads memory the game has moved on from, and
         // a base PS5 hung). It took ~3 ms of the replay's ~23 a frame in Kokiri Forest on the Pro for ~0.7 of a core, the same
-        // frame rate there; untested on a base PS5, so not the default. RX_VK_ASYNC=1 still starts the render thread, for testing
+        // frame rate there; untested on a base PS5, so not the default. The render thread's switch still starts it, for
+        // testing (vk_replay.cpp render_thread_mode)
         if (threaded::auto_picked(c)) {
             c = threaded::Choice{false, false, threaded::Why::AutoUnsafe};
             unsafe = "the console: On is the recorder thread alone, still being tested";
