@@ -24,6 +24,10 @@
 #include "vk_paths.h"
 #include "../../host/hos_atomic_file.h"   // (language.txt is written whole or not at all)
 
+#ifdef __PROSPERO__
+extern "C" const char* hos_desired_language(void);   // (host/nn_applet.c: language.txt's, else the console's, else English (US))
+#endif
+
 namespace mkwvk::i18n {
 
 namespace {
@@ -192,19 +196,25 @@ std::string read_language_txt() {
     }
     return found;
 }
-/// The language the game runs in, read once (host/nn_applet.c's rule): HOS_LANGUAGE over language.txt, any case, English (US)
-/// when neither names one the game has. It changes only with a restart, so the menu's Auto stays on it
+/// The language the game runs in, read once (host/nn_applet.c's rule): HOS_LANGUAGE over language.txt, any case, (PS5) the
+/// console's language, English (US) when none names one the game has. It changes only with a restart, so the menu's Auto stays on it
 const std::string& game_language_started() {
     static const std::string lang = [] {
+#ifdef __PROSPERO__
+        const std::string got = known_code(hos_desired_language());
+        return got.empty() ? std::string("en-US") : got;
+#else
         const char* env = getenv("HOS_LANGUAGE");
         const std::string want = env ? known_code(env) : read_language_txt();
         return want.empty() ? std::string("en-US") : want;
+#endif
     }();
     return lang;
 }
 /// language.txt's language as the Game language row last wrote it: the game's next start (the one it started in until then)
 std::string& game_language_saved() {
     static std::string lang = [] {
+        (void)game_language_started();   // (PS5: the host's reading first, which may write the first start's file again)
         const std::string txt = read_language_txt();
         return txt.empty() ? game_language_started() : txt;
     }();
