@@ -156,6 +156,8 @@ def jobs_for(rt64, gen_dir):
         out.append((os.path.join(imgui, *f.split("/")), os.path.join(OUT, "obj", "vk_imgui_" + os.path.basename(f)[:-4] + ".o"),
                     vfl + imgui_fl, imgui_digest))
     out.append((os.path.join(gen_dir, "ui_fonts.cpp"), os.path.join(OUT, "obj", "vk_ui_fonts.o"), COMMON + ["-O0", "-w"], ""))
+    # (the files that include Dear ImGui: nx2/build.py's imgui_users, Longshot v3's crash window among them)
+    IMGUI_USERS = ("vk_imgui.cpp", "vk_menu.cpp", "vk_crash_window.cpp")
     for s in upstream.vk_sources():
         if os.path.basename(s) == "vk_ngx_msvc_rt.cpp":
             continue
@@ -164,11 +166,11 @@ def jobs_for(rt64, gen_dir):
         fl = vfl + ([shader_stamp] if os.path.basename(s) == "vk_shader.cpp" else []) + \
             ([stamp] if os.path.basename(s) == "vk_menu.cpp" else []) + \
             (["-DLONGSHOT_LSFG"] if os.path.basename(s) == "vk_framegen.cpp" else []) + \
-            (imgui_fl if os.path.basename(s) in ("vk_imgui.cpp", "vk_menu.cpp") else []) + \
+            (imgui_fl if os.path.basename(s) in IMGUI_USERS else []) + \
             (["-DHOOKSHOT_MIHAWKGEN", "-I" + os.path.join(MIHAWKGEN, "framegen", "include")]
              if HAS_MIHAWKGEN and os.path.basename(s) == "vk_framegen.cpp" else [])
         out.append((s, os.path.join(OUT, "obj", "vk_" + rel + ".o"), fl,
-                    lib_digest if lib else vk_digest + (imgui_digest if os.path.basename(s) in ("vk_imgui.cpp", "vk_menu.cpp") else "")))
+                    lib_digest if lib else vk_digest + (imgui_digest if os.path.basename(s) in IMGUI_USERS else "")))
     # (Lossless Scaling's frame generation from the player's own Lossless.dll: gpu/vk/lsfg, PS5SX2's port; RX_VK_LSFG=1)
     lsfg_dir = os.path.join(VK, "lsfg")
     for f in sorted(os.listdir(lsfg_dir)):
