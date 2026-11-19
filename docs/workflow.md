@@ -44,6 +44,11 @@ and both change, so read them again rather than trusting old ones:
   issue forms (it needs the `gh` CLI). As of 2026-11-10, of 399 issues that named their hardware: AMD 51%, NVIDIA 35%,
   Intel 3.5%; by class RX 6000 16%, AMD APUs and handhelds 12%, RX 9000 10%, RTX 40 9%, RTX 50 8.5%, RTX 30 7%, cards
   without mesh shaders 14.5%; Windows 57%, Linux and SteamOS 17%. This over-counts hardware where things break.
+- **How the crash reports end:** `python -I scripts/crash_groups.py` reads the issues the crash window titled, with
+  their attached records and log ends, and lists them in named groups, the largest first: how the run ended (GPU
+  device lost, an access violation, an uncaught C++ exception, no crash record), whose code the fault was in (the
+  graphics driver, the renderer, the game's lifted code) and whether VRAM or Windows' commit was at its limit.
+  `--markdown` gives a list to paste. A crash fix's reach is its group's share of the reports.
 - **Who plays:** the [Steam Hardware Survey](https://store.steampowered.com/hwsurvey/) is the best public picture of
   PC gaming hardware (vendor, card, OS). Use its current numbers for the installed base.
 
@@ -93,7 +98,8 @@ problem with a log outranks an NVIDIA one of the same severity.
 5. **Pull request.** Open it as work in progress (`forge.py pr create`, a `WIP:` title) and fill in
    [the template](../.forgejo/pull_request_template.md) as
    [CONTRIBUTING.md](../CONTRIBUTING.md#commits-and-pull-requests) says. Mark it ready (`pr ready`) only once it is
-   measured and every *For everyone* box is ticked. Link the issue and the tracking issue. Post the link in #dev-work.
+   [ready for review](../CONTRIBUTING.md#ready-for-review-out-of-wip): tested on your own PC, measured, and every
+   *Everyone* box true. Link the issue and the tracking issue. Post the link in #dev-work.
 6. **Review.** Reviewers take PRs marked ready, not WIP ones; one that needs more work goes back to WIP (with the label
    `needs measurements` when that is what it lacks). Answer every comment in the PR. For each new commit, measurement
    or test run, update the description and comment what changed (`pr update`). Rebase onto `main` before asking for

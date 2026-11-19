@@ -94,6 +94,9 @@ FILE* disk_in = nullptr;
 FILE* disk_out = nullptr;
 FILE* disk_idx = nullptr;
 std::mutex disk_mu;
+constexpr size_t kDiskHold = 0;   // (the PS5 port's held writes, vk_progcache.cpp: as off the console, nothing held)
+std::atomic<size_t> disk_held{0};
+int64_t disk_end = -1;
 std::unordered_map<uint64_t, std::vector<DiskRecord>> disk_records;
 std::unordered_map<uint64_t, std::vector<DiskRecord>> disk_taken;
 std::atomic<int64_t> st_cache_hits{0};

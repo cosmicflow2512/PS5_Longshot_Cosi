@@ -28,9 +28,9 @@ That is expected; it happens once per build, not once per save.
 
 ## Settings: leave them on Auto
 
-Auto (this PC) on a Deck picks the Low quality preset, the game's own resolution, and
-**FSR 3.1** as the upscaler, with the 60 fps cap and frame pacing on. Measured A/B on a
-Deck LCD says this is close to right, and a few specific alternatives are worse:
+Auto (this PC) on a Deck picks the Minimum quality preset (every integrated GPU starts
+there) and the game's own upscaler, with the 60 fps cap and frame pacing on. Measured A/B
+on a Deck LCD says a few specific alternatives are worse:
 
 - **Do not switch to FSR 4.** FSR 4's upscaler is a small ML model; the Deck's GPU
   (RDNA2) has no AI accelerators, so it runs as ordinary shaders. On Deck LCD it measured
@@ -38,6 +38,11 @@ Deck LCD says this is close to right, and a few specific alternatives are worse:
 - **Do not turn Threaded rendering on.** On Deck it measured parity to worse (the menu's
   On is the `RX_VK_ASYNC=1` path; async alone washed out, and threading the recorder
   cost about 14%). It helps at high frame rates on desktop GPUs, not at 1 GHz here.
+- **Custom keeps Auto's smaller textures.** On a Deck, Auto leaves out the top mip level of
+  the largest textures (the terrain's), which roughly halved the long frames at area arrivals
+  on a Deck OLED with no difference seen on the ground. Changing rows after Auto keeps that,
+  and so does Custom from an options file older than Auto or Custom picked on the preset
+  row; applying Low or a higher preset gives full-size textures.
 - Keep the **cap at 60** and frame pacing **on**; that matches what the game's own
   scripts expect (see [graphics and controls](graphics-and-controls.md)).
 
@@ -90,10 +95,12 @@ echo high | sudo tee /sys/class/drm/card0/device/power_dpm_force_performance_lev
 ```
 
 It lasts until the next boot. CPU governor tuning adds little on top of the GPU pin.
-Making the game do this itself when launched from Game mode (through gamemoderun's GPU
-optimisations) is what #716 asks for — until that lands, the one line above is the Deck
-performance lever. Do not leave the level pinned if the Deck is in a bag or a child is
-playing: `high` keeps the fan up and costs battery; `auto` is the sane default and this
+The game now does part of this itself (#716): while it runs, it holds the GPU at amdgpu's
+peak power state, 1300 MHz, unless a level was chosen by hand (`RX_VK_GPU_CLOCK=0` turns
+that off). The pin above, or Steam's GPU clock slider at 1600 MHz, still reaches higher,
+and the game leaves such a level alone.
+
+Do not leave the level pinned if the Deck is in a bag or a child is playing: `high` keeps the fan up and costs battery; `auto` is the sane default and this
 line returns it:
 
 ```

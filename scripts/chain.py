@@ -15,6 +15,7 @@ RX_MAPS=<game folder>/bin names the frames as for scripts/crit.py), the function
 import bisect, collections, os, struct, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import samples  # noqa: E402
 
 WAIT, WOKE, SIGNAL, SLEEP, AWAKE, PRESENT = 1, 2, 3, 4, 5, 6
 REC = struct.Struct("<qQQHB5x")
@@ -27,12 +28,19 @@ def load(path):
             sys.exit("%s: not a HOS_CHAIN recording" % path)
         while True:
             line = f.readline().decode("utf-8", "replace").split()
-            if line[0] == "thread":
-                names[int(line[1])] = line[2]
-            elif line[0] == "records":
-                n = int(line[1])
-                break
+            try:
+                if line[0] == "thread":
+                    names[int(line[1])] = line[2]
+                elif line[0] == "records":
+                    n = int(line[1])
+                    if n < 0:
+                        raise ValueError("negative record count")
+                    break
+            except (IndexError, ValueError):
+                sys.exit("%s: invalid HOS_CHAIN header" % path)
         data = f.read(n * REC.size)
+        if len(data) != n * REC.size:
+            sys.exit("%s: truncated HOS_CHAIN records" % path)
     recs = [REC.unpack_from(data, i * REC.size) for i in range(len(data) // REC.size)]
     recs.sort(key=lambda r: r[0])
     return names, recs
@@ -192,7 +200,7 @@ def samples_on_path(path, names, segs, top):
 
     t0 = at = None
     by_thread = collections.defaultdict(list)   # sample thread name -> [(ns, frames)]
-    for line in open(path, encoding="utf-8", errors="replace"):
+    for line in samples.lines(path):   # (plain or packed)
         if line.startswith("# t0_ns "):
             if t0 is None:
                 t0 = int(line.split()[2])
@@ -273,6 +281,8 @@ def main():
         sys.exit("no presents recorded")
     pth = max(presents, key=lambda k: len(presents[k]))
     ps = presents[pth]
+    if len(ps) < 2:
+        sys.exit("at least two presents on one thread are needed for a frame")
     acc = Acc()
     frames = 0
     for k in range(1, len(ps)):

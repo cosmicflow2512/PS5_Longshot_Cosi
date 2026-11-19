@@ -39,6 +39,9 @@
 // Include through vk_work.h, not by itself: the names below are the wrappers its macros call.
 #pragma once
 
+#ifdef TRACY_ENABLE
+#include "../../host/hos_tracy.h"   // (LONGSHOT_TRACY: the profiler's zones; nothing in any other build)
+#endif
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -59,6 +62,7 @@
 #endif
 
 #include "vk_loader.h"
+#include "vk_new.h"   // (NewNothrow: the ring's and the arena's nothrow new keep their null at the commit limit)
 #if __has_include("longshot_env.h")
 #include "longshot_env.h"   // (env_on: the switches' one rule; the checks paste it ahead of this file themselves)
 #endif
@@ -181,7 +185,8 @@ inline bool parallel_configured() {
     return p && atoi(p) >= 2;
 }
 /// (longshot) The Insert menu's Threaded rendering, the recorder's half of it (threaded_rendering.h; vk_menu.cpp
-/// menu_threaded_rendering, set by vk_replay.cpp before anything runs): true, the recorder thread, as RX_VK_RECORDER=thread.
+/// menu_recorder_thread, set by vk_replay.cpp before anything runs): true, the recorder thread, as RX_VK_RECORDER=thread
+/// (the row On, or its Auto from 6 cores; with 4 or 5 Auto has the render thread alone and this is false).
 /// Asked only with RX_VK_RECORDER unset: the switch, when set, is over the row. Null: no menu (the checks), off
 inline bool (*g_setting_thread)() = nullptr;
 /// RX_VK_RECORDER: sync; defer, thread (serial only: refused, off, with RX_VK_PARALLEL); anything else, off.
@@ -285,7 +290,11 @@ struct Arena {
             }
             const size_t cap = n + align > kChunk ? n + align : kChunk;
             if (nchunks == kMaxChunks || cap > g_hard_budget || capacity > g_hard_budget - cap) return nullptr;
-            void* p = ::operator new(cap, std::align_val_t(64), std::nothrow);
+            void* p;
+            {
+                const NewNothrow nothrow;   // (a refusal: the null below at once, not the new_handler's wait and stop)
+                p = ::operator new(cap, std::align_val_t(64), std::nothrow);
+            }
             if (!p) return nullptr;
             chunks[nchunks++] = {static_cast<uint8_t*>(p), cap};
             capacity += cap;
@@ -497,7 +506,10 @@ inline bool Recorder::start() {   // (the producer, its first packet)
     if (!base) {
         size_t c = 4096;
         while (c < g_ring_bytes && c < (size_t(1) << 30)) c <<= 1;
-        base = static_cast<uint8_t*>(::operator new(c, std::align_val_t(64), std::nothrow));
+        {
+            const NewNothrow nothrow;   // (a refusal: every call made directly, below, not the new_handler's wait and stop)
+            base = static_cast<uint8_t*>(::operator new(c, std::align_val_t(64), std::nothrow));
+        }
         if (!base) {
             broken.store(true);
             ::mkwvk::logf("vk: RX_VK_RECORDER=thread: no memory for the recorder's ring (%zu KB): every call made directly", c >> 10);
@@ -608,6 +620,9 @@ inline void Recorder::loop() {
         if (r == seen && (seen = W.load(std::memory_order_acquire)) == r) {
             if (busy0) busy_ns.fetch_add(now_ns() - busy0, std::memory_order_relaxed), busy0 = 0;
             if (n) packets.fetch_add(n, std::memory_order_relaxed), n = 0;
+#ifdef TRACY_ENABLE
+            HT_WAIT(ht_idle, "recorder idle");   // (LONGSHOT_TRACY: between these the recorder thread runs its packets)
+#endif
             if (!idle(r, seen, last_log)) return;
             continue;
         }

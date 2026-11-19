@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 
 namespace mkwvk::upscaler_rows {
 
@@ -252,25 +253,35 @@ inline float upscale_lod_bias_for(int upscaler, int share, float offset) {
 }
 
 /// The DLSS model row (opts.dlss_model, saved as dlss_model): which of NVIDIA's networks DLSS and DLAA draw with, by its
-/// preset (NVSDK_NGX_DLSS_Hint_Render_Preset_*). 0 the transformer, preset K (the default here, the one tested); 1 the second
-/// generation transformer, preset M (NVIDIA's own pick for Performance); 2 the same generation as tuned for Ultra
-/// Performance, preset L; 3 NVIDIA's default, preset 0 (the runtime picks per mode, and a runtime update can change it)
-enum { MODEL_K = 0, MODEL_M = 1, MODEL_L = 2, MODEL_DEFAULT = 3, kModels = 4 };
-inline unsigned model_preset(int model) {
+/// preset (NVSDK_NGX_DLSS_Hint_Render_Preset_*). 0 the transformer, preset K (the default here, the one tested), or on a
+/// card with less than 7 GB of video memory the CNN, preset E (cnn_for_vram); 1 the second generation transformer, preset M
+/// (NVIDIA's own pick for Performance); 2 the same generation as tuned for Ultra Performance, preset L; 3 NVIDIA's default,
+/// preset 0 (the runtime picks per mode, and a runtime update can change it)
+enum { MODEL_K = 0, MODEL_M = 1, MODEL_L = 2, MODEL_DEFAULT = 3, MODEL_E = 4, MODEL_F = 5, kModels = 6 };
+/// Preset E, NVIDIA's last CNN model (vk_dlss.cpp checks the number against the SDK's)
+constexpr unsigned kPresetE = 5;
+/// The K row draws with preset E on a card with less than 7 GB of video memory (vram: device_vram_bytes(), 0 when not known:
+/// K), the same rule for DLSS (vk_dlss.cpp wanted_preset) and the row's text: less video memory and GPU time than K (an RTX
+/// 3050 6 GB at Performance, 1080p: 1.55 ms less GPU time and 27 MB less of NGX's memory, the same picture)
+inline bool cnn_for_vram(int model, uint64_t vram) { return model == MODEL_K && vram && vram < (7ull << 30); }
+inline unsigned model_preset(int model, uint64_t vram = 0) {
+    if (cnn_for_vram(model, vram)) return kPresetE;
     switch (model) {
     case MODEL_M: return 13;
     case MODEL_L: return 12;
     case MODEL_DEFAULT: return 0;
+    case MODEL_E: return 5;
+    case MODEL_F: return 6;
     default: return 11;   // (K, also for a value past the row)
     }
 }
 /// The preset DLSS is asked for: RX_VK_DLSS_PRESET over the row (env: its value, or nullptr), a letter (A = 1 ... Z = 26,
-/// either case) or 0 for NVIDIA's default; anything else leaves the row's
+/// either case) or 0 for NVIDIA's default; anything else leaves the row's (vram: as model_preset's)
 inline bool preset_env(const char* env) {
     return env && ((*env >= 'A' && *env <= 'Z') || (*env >= 'a' && *env <= 'z') || (env[0] == '0' && !env[1]));
 }
-inline unsigned dlss_preset(int model, const char* env) {
-    if (!preset_env(env)) return model_preset(model);
+inline unsigned dlss_preset(int model, const char* env, uint64_t vram = 0) {
+    if (!preset_env(env)) return model_preset(model, vram);
     if (*env == '0') return 0;
     return (unsigned)(*env >= 'a' ? *env - 'a' + 1 : *env - 'A' + 1);
 }
@@ -295,6 +306,12 @@ inline bool resolution_fixed(int upscaler) { return full_scale(upscaler); }
 inline bool model_shown(bool dlss_ok) { return dlss_ok; }
 /// (env_set: RX_VK_DLSS_PRESET names a preset, which wins over the row for this run)
 inline bool model_fixed(int upscaler, bool env_set) { return !is_dlss(upscaler) || env_set; }
+/// (longshot) The DLAA before the bloom row (opts.dlss_pre_bloom): shown with NVIDIA DLSS chosen where it runs (DLSS or
+/// DLAA), and changeable with DLAA alone: in DLSS's other modes the scene, the bloom and the tone map are drawn smaller than
+/// the output DLSS draws, so its picture cannot go back into the scene (vk_temporal.cpp temporal_pre_bloom)
+inline bool pre_bloom_shown(bool dlss_ok, int upscaler) { return dlss_ok && is_dlss(upscaler); }
+/// (env_set: RX_VK_DLSS_PRE_BLOOM is set, and wins over the row for this run)
+inline bool pre_bloom_fixed(int upscaler, bool env_set) { return upscaler != DLAA || env_set; }
 /// The Window scaling filter does something only when the window's size is not the game's picture's (the Output resolution);
 /// a size not known yet (0) counts as different
 inline bool filter_needed(unsigned picture_w, unsigned picture_h, unsigned window_w, unsigned window_h) {

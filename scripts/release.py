@@ -16,6 +16,12 @@ Versions and notes:
         commits since the last stable call for (CI runs it before it builds anything)
     python -I scripts/release.py nightly-name
         nightly-<commits since the product's first commit>-<8 hex of HEAD>: the nightly's version
+    python -I scripts/release.py nightly-news
+        yes when HEAD brings something the notes list since the newest nightly on its history (git-cliff, cliff.toml: a ci:
+        or chore: commit is in no notes), else no: the release workflow makes no nightly with nothing new on its page
+    python -I scripts/release.py nightly-age
+        the seconds since the newest published nightly came out, or none: the release workflow builds a nightly at
+        least once an hour while merges keep coming
     python -I scripts/release.py notes <tag> [--out <file>]
         the release notes: git-cliff with cliff.toml, over the commits since the tag before (of the product's numbers); an rc
         after the first also lists what the earlier release candidates since the last stable brought
@@ -47,10 +53,16 @@ this is; $FORGEJO_API, $FORGEJO_UPLOAD_API):
         that fails those checks stops it
     python -I scripts/release.py channels
         what each channel offers now, as the launcher reads it
+    python -I scripts/release.py artifacts <folder> --run <run id> <name>...
+        the build jobs' files: the named artifacts of a workflow run (CI: $GITHUB_RUN_ID), each unpacked into <folder>, from
+        the address without Cloudflare when $FORGEJO_UPLOAD_API names one (through Cloudflare they come at about 1 MB/s)
 """
 import argparse
 import base64
+import datetime
 import hashlib
+import http.client
+import io
 import json
 import os
 import re
@@ -62,6 +74,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import zipfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SERVER = "https://git.magicbean.dev"
@@ -81,7 +94,7 @@ STABLE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 VERSION = re.compile(r"^v(\d+)\.(\d+)\.(\d+)(?:-rc\.(\d+))?$")
 NIGHTLY = re.compile(r"^nightly-([0-9]{1,9})-([0-9a-f]{8})$")
 # (names that look like the game's files, a dump's, or NVIDIA's runtime: never uploaded, CONTRIBUTING.md)
-NOT_A_RELEASE_FILE = re.compile(r"(\.(nso|nca|nsp|xci|nsz|xcz|nup|keys|bin)$|romfs|exefs|nvngx|dlss|streamline|^sl\..*\.dll$)",
+NOT_A_RELEASE_FILE = re.compile(r"(\.(nso|nca|nsp|xci|nsz|xcz|nup|nx|keys|bin)$|romfs|exefs|nvngx|dlss|streamline|^sl\..*\.dll$)",
                                 re.IGNORECASE)
 # (a Conventional Commit title: type(scope)!: description; scripts/forge.py checks pull request titles with the same types)
 TITLE = re.compile(r"^(feat|fix|perf|refactor|docs|test|ci|build|chore|revert)(\([^)]*\))?(!)?: ")
@@ -231,6 +244,20 @@ def nightly_name(product, root=ROOT):
     return "nightly-%s-%s" % (count, git("rev-parse", "--short=8", "HEAD", root=root))
 
 
+def nightly_age(rels, now=None):
+    """The seconds since the newest published nightly came out (its published_at, else created_at), or None when there is
+    none: a nightly that waited for more merges still builds when the one before is an hour old"""
+    published = [r for r in rels if NIGHTLY.match(r["tag_name"]) and not r.get("draft")]
+    if not published:
+        return None
+    newest = max(published, key=lambda r: int(NIGHTLY.match(r["tag_name"]).group(1)))
+    stamp = newest.get("published_at") or newest.get("created_at")
+    if not stamp:
+        return None
+    when = datetime.datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+    return int((time.time() if now is None else now) - when.timestamp())
+
+
 def previous_tag(tag, first_major, root=ROOT):
     """The tag the notes of tag start after: the newest version tag before it on its history (for a stable, the stable
     before it, so its notes cover its release candidates too)"""
@@ -249,6 +276,18 @@ def previous_nightly(tag, root=ROOT):
     found = [t for t in (git("tag", "--merged", "HEAD", "--list", "nightly-*", root=root) or "").split()
              if NIGHTLY.match(t) and t != tag]
     return max(found, key=lambda t: int(NIGHTLY.match(t).group(1)), default=None)
+
+
+def nightly_news(product, root=ROOT):
+    """Whether HEAD brings anything a nightly's notes list as new since the newest nightly on its history: git-cliff's
+    notes over those commits (cliff.toml) have an entry. Only ci: or chore: commits since: no, and no nightly is made
+    (they are in no notes); the next one comes with what follows. The first nightly: yes"""
+    previous = previous_nightly(nightly_name(product, root), root)
+    if previous is None:
+        return True
+    if git("rev-list", "--count", previous + "..HEAD", root=root) == "0":
+        return False
+    return any(line.startswith("- ") for line in git_cliff("--strip", "all", previous + "..HEAD", root=root).splitlines())
 
 
 RC_TAGS = r"^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$"   # (git-cliff --ignore-tags: the earlier release candidates in one list)
@@ -505,12 +544,31 @@ UPLOAD_TRIES = 4      # (an upload the server answers with a 5xx, or that the co
 UPLOAD_PAUSE = 20.0   # (seconds before the second try; twice that before the third, and so on)
 
 
+READ_TRIES = 4        # (a GET the server answers with a 5xx, or whose answer never comes whole, is made again: this many times in all)
+READ_PAUSE = 5.0      # (seconds before the second try; twice that before the third, and so on)
+
+
 class ServerTrouble(Exception):
     """A request the server answered with a 5xx, or that never got its answer: worth making again"""
 
 
 def api(method, path, body=None, data=None, content_type=None, upload=False, missing_ok=False, again=False):
-    """again: a 5xx answer or a lost connection raises ServerTrouble instead of ending the run, for a caller that retries"""
+    """again: a 5xx answer or a lost connection raises ServerTrouble instead of ending the run, for a caller that retries.
+    A GET changes nothing, so it is made again here, READ_TRIES times in all: git.magicbean.dev has cut off the list of
+    releases mid-answer (IncompleteRead), which ended v1.0.0-rc.11's publish with every file built and signed"""
+    tries = 1 if again or method != "GET" else READ_TRIES
+    for attempt in range(1, tries + 1):
+        try:
+            return api_once(method, path, body, data, content_type, upload, missing_ok, again or attempt < tries)
+        except ServerTrouble as e:
+            if again:
+                raise
+            pause = READ_PAUSE * attempt
+            print("::warning::%s: try %d of %d failed: again in %d s" % (e, attempt, tries, pause), flush=True)
+            time.sleep(pause)
+
+
+def api_once(method, path, body, data, content_type, upload, missing_ok, again):
     base = (os.environ.get("FORGEJO_UPLOAD_API") if upload else None) or os.environ.get("FORGEJO_API") or SERVER + "/api/v1"
     headers = {"User-Agent": "longshot-release", "Accept": "application/json"}
     token = os.environ.get("RELEASE_TOKEN")
@@ -531,7 +589,7 @@ def api(method, path, body=None, data=None, content_type=None, upload=False, mis
         if again and e.code >= 500:
             raise ServerTrouble(said)
         fail(said)
-    except (urllib.error.URLError, OSError) as e:   # (no answer: refused, reset, timed out)
+    except (urllib.error.URLError, OSError, http.client.HTTPException) as e:   # (no answer, or not all of it: refused, reset, timed out, cut off)
         if again:
             raise ServerTrouble("%s %s: %s" % (method, path, e))
         fail("%s %s: %s" % (method, path, e))
@@ -662,6 +720,42 @@ class _TokenStaysHome(urllib.request.HTTPRedirectHandler):
 _OPENER = urllib.request.build_opener(_TokenStaysHome)
 
 
+def artifacts(run_id, names, out, product, limit=4 << 30):
+    """The named artifacts of workflow run run_id (its build jobs' files: upload-artifact's), each unpacked into out. From
+    the address without Cloudflare when FORGEJO_UPLOAD_API names one, as download does: through Cloudflare, as
+    download-artifact fetches them, they come at about 1 MB/s, a minute and more for a builder. Each name must be the run's
+    once, and each file in it a plain name that no other has; nothing is written into out until every one is fetched"""
+    repo = repo_of(product)
+    # (the run's list; Forgejo gives each artifact's archive_download_url under its public address, which download changes)
+    listed = api("GET", "/repos/%s/actions/runs/%d/artifacts?limit=50" % (repo, run_id), upload=True) or []
+    items = (listed.get("artifacts") or []) if isinstance(listed, dict) else listed
+    files = {}
+    for name in names:
+        found = [a for a in items if a.get("name") == name and not a.get("expired")]
+        if len(found) != 1:
+            fail("run %d has %d artifacts named %s, not one" % (run_id, len(found), name))
+        data = download(found[0]["archive_download_url"], limit=limit)
+        try:
+            with zipfile.ZipFile(io.BytesIO(data)) as z:
+                for info in z.infolist():
+                    if info.is_dir():
+                        continue
+                    base = info.filename
+                    if not base or base != os.path.basename(base) or "\\" in base or base in (".", ".."):
+                        fail("%s: %r is not a plain file name" % (name, info.filename))
+                    if base in files:
+                        fail("%s: %s is in two artifacts" % (name, base))
+                    files[base] = z.read(info)
+        except zipfile.BadZipFile as e:
+            fail("%s: not a zip (%s)" % (name, e))
+        print("%s: %d MB" % (name, len(data) >> 20), flush=True)
+    os.makedirs(out, exist_ok=True)
+    for base, data in sorted(files.items()):
+        with open(os.path.join(out, base), "wb") as f:
+            f.write(data)
+    return sorted(files)
+
+
 def released_as(commit, product, root=ROOT, but=None):
     """The tag of the published release CI made of commit (a nightly, or for a stable its release candidate), or None.
     Forgejo's list says a release's tag, git (the tags fetched) which commit it is. CI publishes a release only when every
@@ -713,6 +807,8 @@ def main(argv=None):
     s.add_argument("--releases", help="the releases as Forgejo's API lists them (a JSON file), instead of asking it")
     s.add_argument("--main", default="origin/main")
     sub.add_parser("nightly-name")
+    sub.add_parser("nightly-news")
+    sub.add_parser("nightly-age")
     s = sub.add_parser("notes")
     s.add_argument("tag")
     s.add_argument("--out")
@@ -745,6 +841,10 @@ def main(argv=None):
     s.add_argument("--not", dest="but")
     s = sub.add_parser("git-cliff")
     s.add_argument("folder")
+    s = sub.add_parser("artifacts")
+    s.add_argument("out")
+    s.add_argument("--run", type=int, required=True)
+    s.add_argument("names", nargs="+")
     a = p.parse_args(argv)
     product = a.product or product_of()
     first = PRODUCTS[product]["first_major"]
@@ -771,6 +871,11 @@ def main(argv=None):
         print("%s: ok (%s channel)" % (a.tag, channel_of(a.tag, first)))
     elif a.cmd == "nightly-name":
         print(nightly_name(product))
+    elif a.cmd == "nightly-news":
+        print("yes" if nightly_news(product) else "no")
+    elif a.cmd == "nightly-age":
+        age = nightly_age(releases(repo_of(product)))
+        print("none" if age is None else age)
     elif a.cmd == "notes":
         text = notes(a.tag, product)
         if a.out:
@@ -833,6 +938,9 @@ def main(argv=None):
         prune(a.keep, product)
     elif a.cmd == "git-cliff":
         print(fetch_git_cliff(a.folder))
+    elif a.cmd == "artifacts":
+        for name in artifacts(a.run, a.names, a.out, product):
+            print(os.path.join(a.out, name))
     elif a.cmd == "released-as":
         if not re.match(r"^[0-9a-f]{40}$", a.commit):
             fail("%s: a full commit hash is needed" % a.commit)

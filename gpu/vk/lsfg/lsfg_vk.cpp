@@ -8,6 +8,12 @@
 #include <algorithm>
 #include <cstring>
 
+namespace mkwvk {   // (vk_vma.cpp: the chain's allocations, with the renderer's memory priority)
+VkResult lsfg_vma_image(VmaAllocator allocator, const VkImageCreateInfo& info, VkImage* image, VmaAllocation* allocation);
+VkResult lsfg_vma_upload(VmaAllocator allocator, const VkBufferCreateInfo& info, VkBuffer* buffer, VmaAllocation* allocation,
+                         VmaAllocationInfo* out);
+}
+
 namespace lsfg
 {
 const char* VkResultName(VkResult result)
@@ -98,11 +104,9 @@ Image CreateImage(const Device& device, const VkImageCreateInfo& info)
 {
 	if (!device.Ok())
 		return {};
-	VmaAllocationCreateInfo aci = {};
-	aci.usage = VMA_MEMORY_USAGE_GPU_ONLY;
 	VkImage image = VK_NULL_HANDLE;
 	VmaAllocation allocation = VK_NULL_HANDLE;
-	const VkResult res = vmaCreateImage(device.allocator, &info, &aci, &image, &allocation, nullptr);
+	const VkResult res = mkwvk::lsfg_vma_image(device.allocator, info, &image, &allocation);   // (vk_vma.cpp: with its priority)
 	if (res != VK_SUCCESS)
 	{
 		device.Fail("vmaCreateImage " + std::to_string(info.extent.width) + "x" + std::to_string(info.extent.height) + " format " +
@@ -118,13 +122,10 @@ Buffer CreateUploadBuffer(const Device& device, VkDeviceSize size, VkBufferUsage
 	if (!device.Ok())
 		return {};
 	const VkBufferCreateInfo bci = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, nullptr, 0, size, usage, VK_SHARING_MODE_EXCLUSIVE, 0, nullptr};
-	VmaAllocationCreateInfo aci = {};
-	aci.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
-	aci.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
 	VkBuffer buffer = VK_NULL_HANDLE;
 	VmaAllocation allocation = VK_NULL_HANDLE;
 	VmaAllocationInfo info = {};
-	const VkResult res = vmaCreateBuffer(device.allocator, &bci, &aci, &buffer, &allocation, &info);
+	const VkResult res = mkwvk::lsfg_vma_upload(device.allocator, bci, &buffer, &allocation, &info);   // (vk_vma.cpp: with its priority)
 	if (res != VK_SUCCESS)
 	{
 		device.Fail("vmaCreateBuffer", res);

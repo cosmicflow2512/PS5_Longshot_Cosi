@@ -9,10 +9,14 @@
    Environment: HOS_TRACE=1 (log HLE calls), HOS_MEMORY_MB (memory the game is told it has),
                 HOS_NVN_CONTINUE=1 (go on past nvnBootstrapLoader). */
 #include "hos.h"
+#ifdef TRACY_ENABLE
+#include "hos_tracy.h"
+#endif
 #ifndef LONGSHOT_ENV_H   /* (env_on: the switches' one rule) */
 #include "../gpu/vk/compat/longshot_env.h"
 #endif
 #include "hos_paths.h"
+#include "oot_heart_containers.h"   /* (the Discord status's pieces of heart) */
 #include "game_layout.h"
 #include "options_path.h"
 #include "hos_wide_size.h"   /* (the widescreen picture's size, shared with the Insert menu) */
@@ -26,6 +30,7 @@
 #define LONGSHOT_VERSION "unknown"
 #endif
 const char *hos_version(void) { return LONGSHOT_VERSION; }   /* (discord_rpc.c's status) */
+
 #if defined(_WIN32) || defined(__EMSCRIPTEN__)
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -42,6 +47,7 @@ const char *hos_version(void) { return LONGSHOT_VERSION; }   /* (discord_rpc.c's
 #include <unistd.h>
 #include <sys/syscall.h>
 #endif
+#include "hos_atomic_file.h"   /* (the files the saves' move copies, saves-moved.txt and the stand-ins' clean-up: whole or not at all) */
 /* (linux) the separator of the paths the executable's folder is joined with */
 #ifdef _WIN32
 #define SEP 92
@@ -50,6 +56,44 @@ const char *hos_version(void) { return LONGSHOT_VERSION; }   /* (discord_rpc.c's
 #define SEP '/'
 #define SEP_S "/"
 #endif
+
+/* (longshot) the map Link is in and his age, as the last map: line, for the performance summary (gpu/vk/perf_report.cpp
+   through MkwVkHost perf_info): "" while no save is loaded (before one, and back at the title) */
+static SRWLOCK map_lock = SRWLOCK_INIT;
+static char map_now[100];
+/* (Link's pose for the same summary's one-second samples: oot_perf_pose sets it from his update, at most every
+   PERF_POSE_EVERY_NS; one not set for PERF_POSE_STALE_NS is no pose, since Link isn't updating: the title, the file
+   select, a reset, a load) */
+#define PERF_POSE_EVERY_NS 250000000LL
+#define PERF_POSE_STALE_NS 1000000000LL
+static SRWLOCK perf_pose_lock = SRWLOCK_INIT;
+static float perf_pose_now[5];
+static int perf_pose_valid;
+static int64_t perf_pose_ns;
+static volatile LONG perf_pose_enabled;
+static void perf_pose_clear(void) {
+    AcquireSRWLockExclusive(&perf_pose_lock);
+    perf_pose_valid = 0;
+    ReleaseSRWLockExclusive(&perf_pose_lock);
+}
+void hos_movie_stats(int64_t out[5]);   /* nn_video.c */
+const char *hos_perf_info(char *map, int cap, int64_t movie[5], float pose[5], int *has_pose) {
+    AcquireSRWLockShared(&map_lock);
+    snprintf(map, (size_t)cap, "%s", map_now);
+    ReleaseSRWLockShared(&map_lock);
+    hos_movie_stats(movie);
+    const int64_t now = hos_now_ns();
+    AcquireSRWLockShared(&perf_pose_lock);
+    *has_pose = perf_pose_valid && now - perf_pose_ns < PERF_POSE_STALE_NS;
+    if (*has_pose) memcpy(pose, perf_pose_now, sizeof perf_pose_now);
+    ReleaseSRWLockShared(&perf_pose_lock);
+    return LONGSHOT_VERSION;
+}
+
+void hos_perf_tracking(int enabled) {
+    InterlockedExchange(&perf_pose_enabled, enabled != 0);
+    if (!enabled) perf_pose_clear();
+}
 
 #ifdef A64_MEM_ZERO
 /* web: guest address = wasm address; the guest window is wasm memory below the host's data (-sGLOBAL_BASE) */
@@ -164,7 +208,6 @@ static int reserve_guest(void) {
            needed. HOS_GUEST_MEMFD=1: the memfd all the same) */
         const char *e = getenv("HOS_GUEST_MEMFD");
         int usable = 0;
-        unsigned long long limit_mb = 0;
         {
             const int u = open("/dev/udmabuf", O_RDWR | O_CLOEXEC);
             if (u < 0 && (errno == EACCES || errno == EPERM)) {
@@ -182,16 +225,19 @@ static int reserve_guest(void) {
             if (startup_stderr >= 0) close(startup_stderr), startup_stderr = -1;
             if (u >= 0) {
                 close(u);
+                /* (issue 1135) usable whatever size_limit_mb says: the renderer reads the limit itself and takes udmabuf's
+                   default, 64 MB, when it can't (gpu/vk/vk_memory.cpp import_dma_buf), and a limit too small only makes more
+                   dma-bufs. A Flatpak's or Steam's container shows /dev/udmabuf but not /sys/module */
                 FILE *f = fopen("/sys/module/udmabuf/parameters/size_limit_mb", "r");
-                if (f) {
-                    if (fscanf(f, "%llu", &limit_mb) != 1) limit_mb = 0;
+                if (f)
                     fclose(f);
-                }
-                usable = limit_mb > 0;
+                else
+                    hos_log("mem: udmabuf's size_limit_mb cannot be read (in a container?): its default, 64 MB, assumed");
+                usable = 1;
             }
             if (!usable && !e)
-                hos_log("mem: guest memory stays host-pointer imports for the GPU (slow submissions on AMD): %s",
-                        u < 0 ? "/dev/udmabuf cannot be opened" : "udmabuf's size_limit_mb cannot be read");
+                hos_log("mem: guest memory stays host-pointer imports for the GPU (slow submissions on AMD): "
+                        "/dev/udmabuf cannot be opened");
         }
         if (e ? atoi(e) != 0 : usable) {
             const int fd = (int)syscall(SYS_memfd_create, "longshot-guest", 1u /* MFD_CLOEXEC */ | 2u /* MFD_ALLOW_SEALING */);
@@ -325,14 +371,7 @@ static int has_link(const char *p) {
 static int copy_tree(const char *from, const char *to) {
     if (is_link(from)) return copy_link(from, to);
     if (!is_dir(from)) {
-        FILE *in = fopen(from, "rb"), *out = in ? fopen(to, "wb") : NULL;
-        int ok = in && out;
-        char buf[1 << 16];
-        for (size_t n; ok && (n = fread(buf, 1, sizeof buf, in)) > 0;) ok = fwrite(buf, 1, n, out) == n;
-        ok = ok && in && !ferror(in);
-        if (in) fclose(in);
-        if (out && fclose(out)) ok = 0;
-        return ok;
+        return hos_atomic_copy_file(from, to);   /* (each file whole under its name, or not there) */
     }
     if (!CreateDirectoryA(to, NULL) && !is_dir(to)) return 0;
     char pattern[MAX_PATH];
@@ -441,16 +480,31 @@ static const char *saves_dir(const char *beside) {
         char note[MAX_PATH];
         const char *sep = strrchr(beside, SEP);
         snprintf(note, sizeof note, "%.*s" SEP_S "saves-moved.txt", sep ? (int)(sep - beside) : 0, beside);
-        FILE *f = fopen(note, "w");
-        if (f) {
-            fprintf(f, "Longshot's saves are now in\n%s\n\nThey moved there from the user folder that was here.\n", dir);
-            fclose(f);
-        }
+        char text[MAX_PATH + 160];
+        const int n = snprintf(text, sizeof text, "Longshot's saves are now in\n%s\n\nThey moved there from the user folder that was here.\n", dir);
+        if (n > 0 && (size_t)n < sizeof text) hos_atomic_write(note, text, (size_t)n);
         hos_log("saves: moved from %s to %s", beside, dir);
     }
     return dir;
 }
 #endif
+
+/* (longshot) What a write of a setting that a kill cut left (host/hos_atomic_file.h), at the start, before the game reads any
+   setting: a "<name>.hosnew" beside the setting. language.txt is the game folder's; mouse_sens.txt is the user folder's; the
+   settings file is where options_path.c chose it (the user folder's with --user, HOS_OPTIONS_FILE's, else the game folder's):
+   the options' one-time copy into the user folder leaves its stand-in there. */
+static void recover_writes(void) {
+    char path[MAX_PATH];
+    const DWORD len = hos_game_path_a(path, MAX_PATH);
+    char *slash = len ? strrchr(path, SEP) : NULL;
+    if (slash) {
+        snprintf(slash + 1, (size_t)(path + MAX_PATH - slash - 1), "language.txt");
+        hos_atomic_remove_stale(path);
+    }
+    if (hos_options_file()[0]) hos_atomic_remove_stale(hos_options_file());
+    snprintf(path, sizeof path, "%s" SEP_S "mouse_sens.txt", hos_user_dir);
+    hos_atomic_remove_stale(path);
+}
 
 /* longshot_env.txt beside the game: NAME=VALUE lines set as environment variables before anything reads them, for the
    switches players are asked to test (RX_VK_NOOPT and the rest). Lines starting with # are notes. On Linux this runs
@@ -484,10 +538,9 @@ static int env_line_allowed(const char *name, const char *value) {
        the file select) */
     static const char *const by_name[] = {
         "HOS_AUDIO_DUMP", "HOS_AUDIO_WB_DUMP", "HOS_SHADER_DUMP", "HOS_FS_OVERLAY", "HOS_MODS", "HOS_INPUT_LIVE",
-        "HOS_INPUT_SCRIPT", "HOS_SAMPLE_ALL", "HOS_CHAIN", "HOS_WATCH", "HOS_CRASH_TEST", "LONGSHOT_BUILDER_HOME", "RX_VK_SHOTS", "RX_VK_SHOT_GO",
+        "HOS_INPUT_SCRIPT", "HOS_SAMPLE_ALL", "HOS_SLOW_FRAMES", "HOS_CHAIN", "HOS_WATCH", "HOS_CRASH_TEST", "LONGSHOT_BUILDER_HOME", "RX_VK_SHOTS", "RX_VK_SHOT_GO",
         "RX_VK_FRAMELOG", "RX_VK_HANG_DUMP", "RX_VK_DUMP", "RX_VK_DUMP_SPV", "RX_VK_DUMP_MESH_SPV", "RX_VK_DUMP_STAGES",
-        "RX_VK_DUMP_FAILED", "RX_VK_IR", "RX_VK_MENU_SCRIPT", "RX_DUMP_WGSL", "RX_DUMP_SLOW_WGSL", "RX_DUMP_TICS",
-        "RX_WGSL_OVERRIDE"};
+        "RX_VK_DUMP_FAILED", "RX_VK_IR", "RX_VK_MENU_SCRIPT"};
     for (size_t i = 0; i < sizeof by_name / sizeof *by_name; i++) names_file |= !strcmp(name, by_name[i]);
     /* RX_VK_DLSS_DIR: a folder on this PC, not a share (\\server\x or //server/x) or a device path */
     if (!strcmp(name, "RX_VK_DLSS_DIR"))
@@ -558,20 +611,11 @@ static void load_longshot_env(void) {
 }
 
 /* Switches this build no longer reads, still set (in the environment or longshot_env.txt, as older issues told players):
-   one log line each, naming what took its place, so a bug report shows the switch did nothing */
+   one log line each, naming what took its place, so a bug report shows the switch did nothing. Only the names of
+   another family are left here: a removed RX_ or HOS_ switch is a GONE row of gpu/vk/switches.def, said by the
+   renderer's start (switches.h) */
 static void removed_switch_notes(void) {
     static const char *const gone[][2] = {
-        {"RX_VK_NO_DESC_REUSE", "RX_VK_DESC_REUSE=never"},
-        {"RX_VK_DESC_SLOTGEN", "RX_VK_DESC_REUSE (the same 0 and 1) or the Descriptor reuse row"},
-        {"RX_VK_DESC_REUSE_DGEN", NULL},
-        {"RX_VK_NO_NAN_GUARD", "RX_VK_NAN_GUARD=0"},
-        {"RX_VK_FOLLOW_MESH", NULL},
-        {"RX_VK_OOT", NULL},
-        {"RX_VK_OOT_EXPOSURE", NULL},
-        {"RX_VK_OOT_FOG", NULL},
-        {"RX_VK_OOT_VISUAL", NULL},
-        {"HOS_FIX_RES", NULL},
-        {"HOS_SCENE_NATIVE", NULL},
         {"TOTK_MINIMAL_LAYOUT", NULL},
     };
     for (size_t i = 0; i < sizeof gone / sizeof *gone; i++)
@@ -732,15 +776,27 @@ static void oot_inventory_refresh(Ctx *c, int64_t now) {
         int child = 1;
         rx_option_set(OOT_CHEAT_AGE_ID, loaded && oot_gamedata_bool(c, 0xcea220d3u, &child) ? (child ? 0 : 1) : -1);
     }
+    static char logged[100];
+    if (!loaded && logged[0]) {   /* back to the title or the file select: the summary's time there is not the last map's */
+        logged[0] = 0;
+        AcquireSRWLockExclusive(&map_lock);
+        map_now[0] = 0;
+        ReleaseSRWLockExclusive(&map_lock);
+        perf_pose_clear();   /* (nor is Link's last place in the field: the title's samples have no pose) */
+    }
     if (loaded) {   /* the map Link is in and his age, logged when either changes: where a log's problem happened, the "Where in
                        the game" of the Insert menu's Bug report (gpu/vk/vk_bug_report.cpp reads the last of these lines) */
-        static char logged[100];
         char map[80], line[100];
         int child = 1;
         if (oot_gamedata_string(c, 0x1d6189dau, map, sizeof map) && map[0]) {   /* Sequence_CurrentBanc */
             snprintf(line, sizeof line, "%s (%s)", map,
                      oot_gamedata_bool(c, 0xcea220d3u, &child) ? (child ? "child" : "adult") : "age not known");
-            if (strcmp(line, logged)) hos_log("map: %s", line), snprintf(logged, sizeof logged, "%s", line);
+            if (strcmp(line, logged)) {
+                hos_log("map: %s", line), snprintf(logged, sizeof logged, "%s", line);
+                AcquireSRWLockExclusive(&map_lock);   /* (the performance summary's map: hos_perf_info) */
+                snprintf(map_now, sizeof map_now, "%s", line);
+                ReleaseSRWLockExclusive(&map_lock);
+            }
         }
     }
     if (!probed && oot_pouch_count(c, "Item_DekuSeed") >= 0) {
@@ -997,8 +1053,9 @@ static int oot_event_arg(Ctx *c, uint64_t arg, const char *name, uint32_t type, 
     const uint64_t name_buf = recomp_load64(c, entry + 8);
     const uint32_t name_cap = recomp_load32(c, entry + 16);
     const size_t length = strlen(name);
-    if (!name_buf || length + 1 > name_cap) return 0;
-    memcpy(A64_PTR(name_buf), name, length + 1);
+    void *to = name_buf && length + 1 <= name_cap ? hos_guest_range(name_buf, length + 1) : NULL;   /* (longshot) */
+    if (!to) return 0;
+    memcpy(to, name, length + 1);
     if (type == 4) recomp_store8(c, entry + 152, value & 1);
     else recomp_store64(c, entry + 152, value);
     recomp_store32(c, entry, type);
@@ -1081,8 +1138,9 @@ static int oot_teleport(Ctx *c, uint64_t actor, unsigned index) {
     {   /* the event's name: arg+6800 points at its buffer, arg+6808 the capacity */
         const uint64_t buf = recomp_load64(c, arg + 6800);
         const uint32_t cap = recomp_load32(c, arg + 6808);
-        if (!buf || strlen(event) + 1 > cap) ok = 0;
-        else memcpy(A64_PTR(buf), event, strlen(event) + 1);
+        void *to = buf && strlen(event) + 1 <= cap ? hos_guest_range(buf, strlen(event) + 1) : NULL;   /* (longshot) */
+        if (!to) ok = 0;
+        else memcpy(to, event, strlen(event) + 1);
     }
     ok = ok && oot_event_arg(c, arg, "NextBanc", 1, strings);
     ok = ok && oot_event_arg(c, arg, "NextStartPos", 1, strings + 128);
@@ -1213,6 +1271,10 @@ static void oot_teleport_followup(Ctx *c) {
 static SRWLOCK oot_map_lock = SRWLOCK_INIT;
 static char oot_map[80];
 static int oot_flags = -1;   /* (1 an event playing, 2 a map loading, 4 the child; -1 not read yet) */
+/* (with the map, for the Discord status: Link's life and its most in quarter hearts, his rupees, his Gold Skulltula
+   tokens, his pieces of heart; -1 not known) */
+static int oot_stats[5] = {-1, -1, -1, -1, -1};
+int hos_oot_gamedata_int(uint32_t hash, int64_t *v);   /* (host/oot_state_tap.c) */
 static void oot_map_refresh(Ctx *c, int64_t now) {
     static int64_t next;
     if (now < next) return;
@@ -1224,10 +1286,37 @@ static void oot_map_refresh(Ctx *c, int64_t now) {
     oot_gamedata_bool(c, 0xcea220d3u, &child);     /* Sequence_IsChildhood */
     const uint64_t events = oot_singleton(c, OOT_EVENTMGR_SLOT);
     const int flags = (events && recomp_load64(c, events + 104) ? 1 : 0) | (loading ? 2 : 0) | (child ? 4 : 0);
+    int stats[5] = {-1, -1, -1, -1, -1};
+    static const uint32_t hashes[3] = {0x31ab5580u, 0xfbe01da1u, 0xa77921d7u};   /* PlayerStatus.Life, .MaxLife, .CurrentRupee */
+    for (int i = 0; i < 3; i++) {
+        int64_t v;
+        if (hos_oot_gamedata_int(hashes[i], &v) && v >= 0 && v < 100000) stats[i] = (int)v;
+    }
+    /* (the Gold Skulltula tokens, as the Cheats page counts them, -1 none: a call into the game, so every 2 s, not 250 ms; the
+       Discord status changes at most every 15 s) */
+    static int tokens = -1, pieces = -1;
+    static unsigned refreshes;
+    if (refreshes++ % 8 == 0) {
+        tokens = oot_pouch_count(c, "Item_Token_Gold");
+        /* (the pieces of heart he found: from those he holds, 0-3, Pouch_Heart_Piece's pouch content by its actor name,
+           his most life and the boss containers he took; -1 until host/oot_heart_containers.c has their ids) */
+        pieces = heart_pieces_total(stats[1], hos_oot_heart_containers_taken(), oot_pouch_count(c, "Obj_Heart_Piece"));
+    }
+    stats[3] = tokens, stats[4] = pieces;
     AcquireSRWLockExclusive(&oot_map_lock);
     memcpy(oot_map, map, sizeof oot_map);
     oot_flags = flags;
+    memcpy(oot_stats, stats, sizeof oot_stats);
     ReleaseSRWLockExclusive(&oot_map_lock);
+}
+/* (with the map, host/discord_rpc.c) Link's life and its most in quarter hearts, his rupees, Gold Skulltula tokens and pieces
+   of heart, each -1 when not known; 0 before any */
+int hos_oot_stats(int *life, int *max_life, int *rupees, int *tokens, int *pieces) {
+    AcquireSRWLockShared(&oot_map_lock);
+    const int have = oot_flags >= 0;
+    *life = oot_stats[0], *max_life = oot_stats[1], *rupees = oot_stats[2], *tokens = oot_stats[3], *pieces = oot_stats[4];
+    ReleaseSRWLockShared(&oot_map_lock);
+    return have;
 }
 /* (with the map) whether an event (a cutscene, a map change's) is playing, a map is loading, Link is the child: 0 before any */
 int hos_oot_state(int *event, int *loading, int *child) {
@@ -1338,6 +1427,35 @@ static float oot_load_float(Ctx *c, uint64_t addr) {
     return value;
 }
 
+/* The opt-in performance sample's latest Link position and gameplay camera angles. No game memory is read while unticked,
+   and at most every PERF_POSE_EVERY_NS while ticked (the samples take it once a second: not a lock and the camera's
+   pointers at every update). Camera zero's view is the gameplay one only while it is that type, as the flight and the free
+   camera check: in a cutscene it can be another object, whose floats at these offsets mean nothing. A value no place or
+   angle has (a stray read) is no pose either */
+static void oot_perf_pose(Ctx *c, uint64_t actor) {
+    if (!InterlockedCompareExchange(&perf_pose_enabled, 0, 0)) return;
+    static int64_t last;   /* (Link's update's: the game thread) */
+    const int64_t now = hos_now_ns();
+    if (now - last < PERF_POSE_EVERY_NS) return;
+    last = now;
+    const uint64_t view = oot_gameplay_view(c);
+    if (!view || recomp_load64(c, view) != 0x84c18a88ULL) {
+        perf_pose_clear();
+        return;
+    }
+    float pose[5] = {oot_load_float(c, actor + 796), oot_load_float(c, actor + 800), oot_load_float(c, actor + 804),
+                     oot_load_float(c, view + 0x1a4), oot_load_float(c, view + 0x18c)};
+    for (int i = 0; i < 5; i++)
+        if (!isfinite(pose[i]) || fabsf(pose[i]) > (i < 3 ? 1e6f : 64.0f)) {
+            perf_pose_clear();
+            return;
+        }
+    AcquireSRWLockExclusive(&perf_pose_lock);
+    memcpy(perf_pose_now, pose, sizeof pose);
+    perf_pose_valid = 1, perf_pose_ns = now;
+    ReleaseSRWLockExclusive(&perf_pose_lock);
+}
+
 static _Thread_local uint64_t flight_transform_controller;
 static _Thread_local uint64_t flight_pose_actor;
 static _Thread_local float flight_transform_yaw;
@@ -1387,6 +1505,7 @@ static void oot_update_player_cheats(Ctx *c, uint64_t actor, uint64_t components
     static uint64_t flying_actor, marked_actor, marked_controller;
     static int64_t last_tick, last_player_tick;
     static float target[3], velocity[3], mark[3], yaw;
+    oot_perf_pose(c, actor);
     int flying = rx_option(HOS_OPT_CHEAT_FLIGHT, 0) > 0;
     /* An event that takes Link (a map change he flew into, the age toggle's, a cutscene) waits for him to stand, and the
        flight holds him in the air: the screen the event had faded stayed black until the flight was switched off, and a
@@ -1522,6 +1641,16 @@ static void oot_update_player_cheats(Ctx *c, uint64_t actor, uint64_t components
     if (returning) hos_log("cheats: returned to %.2f %.2f %.2f", mark[0], mark[1], mark[2]);
 }
 #endif
+
+/* (host/discord_rpc.c) when Link's update last ran (hos_now_ns), 0 never: the place in the Discord status is his map's while
+   he has been seen lately */
+int64_t hos_oot_player_seen_ns(void) {
+#if defined(_WIN32) || defined(__linux__)
+    return __atomic_load_n(&flight_player_seen, __ATOMIC_RELAXED);
+#else
+    return 0;
+#endif
+}
 
 int hos_oot_player_seen(void) {
 #if defined(_WIN32) || defined(__linux__)   /* (the debug tools: host/posix has what they call) */
@@ -1865,6 +1994,9 @@ static int game_main(int argc, char **argv) {
         const int helper = hos_crash_helper_main(argc, argv);
         if (helper >= 0) return helper;
     }
+#ifdef TRACY_ENABLE
+    hos_tracy_start();   /* (LONGSHOT_TRACY: the profiler's client, in the game alone: host/hos_tracy.h) */
+#endif
     if (!narrow_paths_ok(argc, argv)) return 1;
     hos_game_layout();   /* (the game folder's cache/ and logs/, before anything writes there: host/game_layout.c) */
     {
@@ -1872,6 +2004,7 @@ static int game_main(int argc, char **argv) {
         hos_relaunch_keep_env();
     }
     load_longshot_env();
+    hos_profiling_env();   /* (HOS_PROFILE=1, host/profiling.c: after the file, which may set it) */
 #endif
     /* (the settings file, in the user folder: chosen before the crash window's helper, the Discord status and the renderer read
        it, and after longshot_env.txt, which may set HOS_OPTIONS_FILE; Linux's main chose it already: host/options_path.c) */
@@ -1889,6 +2022,7 @@ static int game_main(int argc, char **argv) {
     }
 #endif
     void hos_crash_record_prepare(const char *log_path);
+    int hos_log_redact_file(const char *path, const char *run_id);   /* (host/log_redact.h) */
     {   // (started from its icon the game has nowhere to log to: longshot_log.txt in the game folder's logs/ (host/game_layout.c), for players to send in)
 #ifdef _WIN32
         {   /* (started again by the Insert menu's Restart now (host/hos_relaunch.c): the run before still has its log open until
@@ -1907,10 +2041,12 @@ static int game_main(int argc, char **argv) {
         /* (PS5) standard error is already the kernel log (host/ps5/platform.c), a pipe and a thread of the platform layer's.
            A file in the title folder costs ~60 ms a write on the console (200 log lines took 12 s), and the log was
            unbuffered: every thread that logged stalled there holding its virtual core, and the game sat idle waiting. */
-        if (0) {
+        const int log_to_file = 0;
+        (void)err;
 #else
-        if (!err || err == INVALID_HANDLE_VALUE || GetFileType(err) == FILE_TYPE_UNKNOWN) {
+        const int log_to_file = !err || err == INVALID_HANDLE_VALUE || GetFileType(err) == FILE_TYPE_UNKNOWN;
 #endif
+        if (log_to_file) {   /* (one brace for both: tests/test_driver_env_choose.py counts them in the source) */
             char path[MAX_PATH + 32];
             DWORD n = hos_game_path_a(path, MAX_PATH);
             while (n && path[n - 1] != 92 && path[n - 1] != 47) n--;
@@ -1929,6 +2065,9 @@ static int game_main(int argc, char **argv) {
                 memcpy(to, path, n), snprintf(to + n, 32, "longshot_log.%d.txt", k);
                 MoveFileExA(from, to, MOVEFILE_REPLACE_EXISTING);
             }
+            /* (longshot) the run before's log without the player's user name: its own lines were written so, and what wrote to
+               stderr itself (the Vulkan loader, SDL) is redacted here when its crash watch did not (host/log_redact.h) */
+            hos_log_redact_file(to, NULL);
 #if !defined(_WIN32) && !defined(A64_MEM_ZERO)
             startup_stderr = fcntl(STDERR_FILENO, F_DUPFD_CLOEXEC, 0);
 #endif
@@ -2039,6 +2178,7 @@ static int game_main(int argc, char **argv) {
         hos_hle_stats_start();
     }
     if (!hos_user_dir) hos_user_dir = "user";
+    recover_writes();   /* (what a write of a setting that a kill cut left: before anything reads the settings) */
     CreateDirectoryA(hos_user_dir, NULL);
     hos_options_carry();   /* (a game folder's settings from before into the user folder, once: host/options_path.c) */
     if (!reserve_guest()) {
@@ -2097,7 +2237,13 @@ static int game_main(int argc, char **argv) {
                 }
                 fclose(o);
             }
-            const int sw = GetSystemMetrics(SM_CXSCREEN), sh = GetSystemMetrics(SM_CYSCREEN);
+            void hos_monitor_prepare(void);
+            int hos_monitor_screen_size(int *,int *);
+            hos_monitor_prepare();
+            int sw=0,sh=0;
+            if (!hos_monitor_screen_size(&sw,&sh)) {
+                sw=GetSystemMetrics(SM_CXSCREEN); sh=GetSystemMetrics(SM_CYSCREEN);
+            }
             /* (no line: the monitor's shape; an older file's 16:9 on a screen narrower than 16:9 too: hos_aspect_on) */
             const int on = hos_aspect_on(saved, version, sw, sh);
             if (on && sh > 0) want = (float)sw / (float)sh;
@@ -2144,9 +2290,10 @@ static int game_main(int argc, char **argv) {
     Ctx *c = hos_boot_main_thread(hos_main_stack_size);
     uint64_t sp = c->x[31];
     void hos_prof_start(void);
-    hos_prof_start();   /* HOS_PROFILE=<seconds> */
+    hos_prof_start();   /* HOS_PROFILE_EVERY=<seconds>, the samplers, HOS_PROFILE=1 */
     void hos_chain_start(void);
     hos_chain_start();  /* HOS_CHAIN=<path> */
+    hos_ab_start();     /* (longshot) HOS_AB=<switch>=<value>: an A/B within the run (host/hos_ab.c), before the game's threads */
 #ifdef _WIN32
     timeBeginPeriod(1);   /* 1 ms timer resolution: the 60 Hz vsync and the game's frame pacing sleep in short steps */
     no_power_throttling();
@@ -2269,6 +2416,9 @@ int main(int argc, char **argv) {
         const int helper = hos_crash_helper_main(argc, argv);
         if (helper >= 0) return helper;
     }
+#ifdef TRACY_ENABLE
+    hos_tracy_start();   /* (LONGSHOT_TRACY: the profiler's client, in the game alone: host/hos_tracy.h) */
+#endif
     int hos_display_init(void);
     void hos_display_loop(void);
 #ifdef __PROSPERO__   /* (the console: standard error into klog, the shell's splash dismissed: host/ps5/platform.c) */
@@ -2278,7 +2428,12 @@ int main(int argc, char **argv) {
     hos_ps5_quit_watch();   /* (a test run's clean stop: host/ps5/win32_ps5.c) */
 #endif
     hos_game_layout();   /* (the game folder's cache/ and logs/, before anything writes there, --prepare-shaders too: host/game_layout.c) */
+    {
+        void hos_relaunch_keep_env(void);   /* (host/hos_relaunch.c: whether the game was given a stderr, for a restart) */
+        hos_relaunch_keep_env();
+    }
     load_longshot_env();
+    hos_profiling_env();   /* (HOS_PROFILE=1, host/profiling.c: after the file, which may set it) */
     hos_options_choose(argc, argv);   /* (before the Discord status reads it, below: host/options_path.c) */
     driver_cache_room();
     driver_cache_folder();

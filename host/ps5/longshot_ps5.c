@@ -64,3 +64,10 @@ int hos_oot_teleport_result(int ticket, char *why, size_t why_cap, char *map, si
     return 0;
 }
 void hos_oot_teleport_cancel(int ticket) { (void)ticket; }
+
+/* (Longshot v3.0.0: host/discord_rpc.c asks the game's hearts, rupees and tokens for its status line; hos_main.c answers only
+   on Windows and Linux, with its debug tools. The console has no Discord: nothing known, as hos_main.c's -1 each) */
+int hos_oot_stats(int *life, int *max_life, int *rupees, int *tokens, int *pieces) {
+    *life = *max_life = *rupees = *tokens = *pieces = -1;
+    return 0;
+}

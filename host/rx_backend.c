@@ -12,6 +12,9 @@
 #include "../gpu/vk/dlss_math.h"
 #include "control.h"
 #include "audio_output_devices.h"
+int hos_monitor_count(void);
+int hos_monitor_info(int index, MkwVkMonitor *out);
+void hos_monitor_select(const char *id);
 
 /* the stand-ins when there is no Vulkan back end (host/rx_nowgpu.c, host/posix/linux_stubs.c) */
 int wgr_start(void *hwnd);
@@ -59,9 +62,20 @@ int hos_binding(int set, int button, int slot);
 int hos_mic_count(void);            /* nn_audio_in.c: the microphones, for the Insert menu */
 const char *hos_mic_name(int index);
 void hos_mic_select(int mode, const char *name, int index);
+int hos_mic_test(int enabled, int gain, int *levels);
+void hos_sdl_rumble_test(void);   /* pad_sdl.c */
+int hos_nfc_count(void);            /* nn_nfp.c: the player's NFC tags, for the Insert menu's NFC tab */
+const char *hos_nfc_name(int index);
+int hos_nfc_tap(int index);
+int hos_nfc_state(void);
+const char *hos_nfc_dir(void);
+int hos_nfc_scan(int start);
+const char *hos_nfc_scan_name(void);
 void hos_bind(int set, int button, int slot, int code);
 int hos_prompts_face(void);         /* prompts.c */
 int hos_prompts_live_parts(void);   /* prompts.c */
+const char *hos_perf_info(char *map, int cap, int64_t movie[5], float pose[5], int *has_pose);   /* hos_main.c */
+void hos_perf_tracking(int enabled);   /* hos_main.c: read Link's pose only for the opt-in performance summary */
 #if defined(A64_WRITE_TRACK) && !defined(__EMSCRIPTEN__)
 void hos_mark_written(const void *p, size_t n);
 #endif
@@ -81,12 +95,14 @@ static inline int marks_clear_256(const uint8_t *m) {
     return !any;
 }
 static int64_t collect_in(const uint64_t (*ranges)[2], int nranges, uint32_t **pages) {
-    /* (HOS_COLLECT_WIDE=0: 32 marks a step at most, as before; the pages found are the same either way) */
-    static int wide = -1;
-    if (wide < 0) {
+    /* (HOS_COLLECT_WIDE=0: 32 marks a step at most, as before; the pages found are the same either way, so HOS_AB may flip it
+       between two walks: host/hos_ab.c) */
+    static int wide_set = -1;
+    if (wide_set < 0) {
         const char *e = getenv("HOS_COLLECT_WIDE");
-        wide = !(e && e[0] == '0');
+        wide_set = !(e && e[0] == '0');
     }
+    const int wide = hos_ab_value("HOS_COLLECT_WIDE", wide_set);
     size_t n = 0, cap = 4096;
     uint32_t *out = malloc(cap * sizeof *out);
     for (int r = 0; r < nranges; r++) {
@@ -153,7 +169,9 @@ static void host_mark_written(const void *p, uint64_t n) {
    zeroed; the region allocator never hands it to the game) */
 static uint64_t host_guest_alloc(uint64_t size) {
     const uint64_t a = hos_region_alloc(size, 0x10000);
-    if (a) memset(hos_guest_base() + a, 0, size);
+    /* (marked written after the zeros: the region may lie where a freed one did, under an import the renderer still
+       holds with its copies of the old bytes) */
+    if (a) memset(hos_guest_base() + a, 0, size), host_mark_written(hos_guest_base() + a, size);
     return a;
 }
 
@@ -165,6 +183,8 @@ int hos_sdl_desktop_size(int *width, int *height);   /* hos_sdl.c */
 #endif
 /* (longshot) the main screen's size, as host/hos_main.c takes its shape (MkwVkHost.screen_size) */
 static int host_screen_size(int *width, int *height) {
+    int hos_monitor_screen_size(int *, int *);
+    if (hos_monitor_screen_size(width, height)) return 1;
 #ifdef _WIN32
     const int w = GetSystemMetrics(SM_CXSCREEN), h = GetSystemMetrics(SM_CYSCREEN);
     if (w <= 0 || h <= 0) return 0;
@@ -213,6 +233,10 @@ extern _Thread_local int64_t hos_slept_ns[2];
 extern volatile int64_t hos_poll_slept_ns, hos_acquire_slept_ns;
 extern volatile int hos_fps_timing;
 static void host_fps_timing(int on) { __atomic_store_n(&hos_fps_timing, on != 0, __ATOMIC_RELAXED); }
+int hos_thread_times_of(const char *name, int64_t out[3]);   /* (hos_thread.c) */
+static int host_main_thread_times(int64_t out[3]) { return hos_thread_times_of("sead::MainThread", out); }
+/* (version 28, issue 1280) the renderer's C++ allocations that its new_handler gave up on: the size is not known there */
+static void host_out_of_memory(const char *what) { hos_alloc_gave_up(0, what); }
 static void host_slept_ns(int64_t out[2]) {
     out[0] = __atomic_load_n(&hos_poll_slept_ns, __ATOMIC_RELAXED);
     out[1] = hos_slept_ns[1] + __atomic_load_n(&hos_acquire_slept_ns, __ATOMIC_RELAXED);
@@ -273,6 +297,11 @@ static const MkwVkHost vk_host = {
     host_romfs_dir, host_wide_menus, host_slept_ns, host_fps_timing, hos_prompts_live_parts, host_screen_size,
     host_take_text, hos_options_file,
     hos_audio_output_count, hos_audio_output_info, hos_audio_output_select, hos_audio_output_state,
+    hos_mic_test, hos_perf_info, host_main_thread_times, host_out_of_memory,
+    hos_monitor_count, hos_monitor_info, hos_monitor_select, hos_perf_tracking,
+    hos_sdl_rumble_test,
+    hos_nfc_count, hos_nfc_name, hos_nfc_tap, hos_nfc_state, hos_nfc_dir, hos_nfc_scan, hos_nfc_scan_name,
+    hos_ab_frame,   /* (version 34, longshot: the frame trace's ab_side, host/hos_ab.c) */
 };
 
 static const MkwVkRenderer *vk;   /* the Vulkan back end, when it was chosen and started */
@@ -386,11 +415,13 @@ int rx_start(void *hwnd) {
     if (r && r->start(hwnd)) {
         vk = r;
         hos_log("rx: renderer: Vulkan (%s)", dll);
+        hos_log("report: renderer Vulkan");   /* (the crash report's renderer: host/hos_crash_dialog.h) */
         flush_early();
         return 1;
     }
     if (r) hos_log("rx: the Vulkan back end could not start on the window: nothing is drawn");
     const int ok = wgr_start(hwnd);
+    if (ok) hos_log("report: renderer WebGPU (no usable Vulkan device)");
     flush_early();
     return ok;
 }
@@ -435,6 +466,8 @@ void rx_nvn_finish(void) { vk ? vk->nvn_finish() : wgr_nvn_finish(); }
 static volatile LONG presents;   /* (the frames shown, for the camera jitter below) */
 void rx_nvn_present(const nvn_tex *t, const int crop[4]) {
     InterlockedIncrement(&presents);
+    hos_slow_frame_present();   /* (HOS_SLOW_FRAMES: a late frame's samples written out, host/slow_frames.c) */
+    hos_ab_present();   /* (longshot) HOS_AB: the frame counted for its side (host/hos_ab.c) */
     vk ? vk->nvn_present(t, crop) : wgr_nvn_present(t, crop);
 }
 /* (longshot, nx2/oot_jitter.py) the temporal upscaler's camera jitter (NVIDIA DLSS, AMD FSR 4: gpu/vk/vk_temporal.cpp): this frame's sub-pixel offset of the scene's projection, in clip
@@ -553,6 +586,10 @@ void rx_nvn_write_texels(const nvn_tex *t, unsigned level, unsigned layer0, cons
        : wgr_nvn_write_texels(t, level, layer0, r, src, row, img);
 }
 void rx_nvn_invalidate(uint64_t gpu, uint64_t size) {
+    /* (longshot) nothing there it can wait for (the back end's lock-free look: nothing ever written back, no texture the GPU
+       wrote): done with the core kept, as on the console, where the call is a cache operation. OoT makes it per shape per
+       view in its model work, each a release of the core and a wait for one again */
+    if (vk && vk->nvn_invalidate_quick && vk->nvn_invalidate_quick(gpu, size)) return;
     /* The callback can wait for replay or GPU write-back: let another guest thread use this core meanwhile. */
     const int away = hos_vcore_away();
     vk ? vk->nvn_invalidate(gpu, size) : wgr_nvn_invalidate(gpu, size);

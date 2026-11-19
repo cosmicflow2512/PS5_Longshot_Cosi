@@ -2,7 +2,7 @@
 SHA256SUMS and its signature; the channels as the launcher reads them from the release list; the version a tag must reach
 (the bump from the commits since the last stable), in a git repository made here; the nightly's name; and publish and
 prune against a fake Forgejo on 127.0.0.1 (a draft first, every file uploaded and checked, published last; only nightlies
-pruned); the release page (the launcher's download links, Longshot's "download the launcher" notice, per channel); and the
+pruned); the build jobs' artifacts, from the address without Cloudflare; the release page (the launcher's download links, Longshot's "download the launcher" notice, per channel); and the
 release a tag's commit already has (released-as: found by its tag's commit, taken only signed and whole).
 Needs git and the openssl command line.
 
@@ -18,6 +18,7 @@ import io
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -26,6 +27,7 @@ import threading
 import unittest
 from unittest import mock
 import urllib.parse
+import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("release", ROOT / "scripts" / "release.py")
@@ -212,6 +214,24 @@ class Bump(unittest.TestCase):
             name = release.nightly_name("launcher", root=str(self.dir))
         self.assertRegex(name, r"^nightly-2-[0-9a-f]{8}$")
         self.assertEqual(release.channel_of(name, 1), "nightly")
+
+    def test_a_nightly_with_nothing_new_is_not_made(self):
+        # (only ci: or chore: commits since the newest nightly put nothing on its page, nightly-322-5bc54c6c: none is made.
+        # git-cliff decides, over the commits since that nightly; the first nightly is always made)
+        self.commit("fix: a")
+        with mock.patch.object(release, "git_cliff") as cliff, mock.patch.dict(release.PRODUCTS["launcher"], since=None):
+            self.assertTrue(release.nightly_news("launcher", root=str(self.dir)))
+            cliff.assert_not_called()
+            previous = release.nightly_name("launcher", root=str(self.dir))
+            self.git("tag", previous)
+            self.assertTrue(release.nightly_news("launcher", root=str(self.dir)))   # (HEAD's own nightly: a run made again)
+            cliff.assert_not_called()
+            self.commit("ci: b")
+            cliff.return_value = ""
+            self.assertFalse(release.nightly_news("launcher", root=str(self.dir)))
+            self.assertEqual(cliff.call_args.args, ("--strip", "all", previous + "..HEAD"))
+            cliff.return_value = "### Fixes\n\n- c"
+            self.assertTrue(release.nightly_news("launcher", root=str(self.dir)))
 
     def test_the_notes_start_after_the_previous_tag(self):
         self.git("tag", "v3.0.0")
@@ -405,6 +425,16 @@ class FakeForgejo(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             return self.wfile.write(data)
+        if self.read_trouble:
+            code = self.read_trouble.pop(0)
+            if code:
+                return self.answer(code, {"message": ""})
+            self.send_response(200)   # (half the answer, then the connection closed: http.client's IncompleteRead)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", "1000")
+            self.end_headers()
+            self.wfile.write(b'[{"id": 1')
+            return self.connection.close()
         # (as Forgejo 17's GET /repos/{owner}/{repo}/releases: drafts only with a writer token; draft= and pre-release= keep
         # only the releases whose field equals the value; limit (default 30, at most max_response_items) and page; newest first)
         q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
@@ -418,6 +448,7 @@ class FakeForgejo(http.server.BaseHTTPRequestHandler):
         page = int(q.get("page", ["1"])[0])
         self.answer(200, rels[(page - 1) * limit:page * limit])
 
+    read_trouble = []   # (the same for the next GETs of the releases: a code, or 0 = half an answer and the connection closed)
     trouble = []   # (the answers the next uploads get instead of being taken: 500 = an error with the file left half there,
                    # 0 = the connection closed with no answer)
 
@@ -465,10 +496,11 @@ class FakeForgejo(http.server.BaseHTTPRequestHandler):
 class Publish(unittest.TestCase):
     def setUp(self):
         FakeForgejo.releases, FakeForgejo.deleted, FakeForgejo.uploads, FakeForgejo.tags = [], [], [], set()
-        FakeForgejo.trouble = []
-        patcher = mock.patch.object(release, "UPLOAD_PAUSE", 0.01)
-        patcher.start()
-        self.addCleanup(patcher.stop)
+        FakeForgejo.trouble, FakeForgejo.read_trouble = [], []
+        for name in ("UPLOAD_PAUSE", "READ_PAUSE"):
+            patcher = mock.patch.object(release, name, 0.01)
+            patcher.start()
+            self.addCleanup(patcher.stop)
         self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), FakeForgejo)
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
         self.addCleanup(self.server.shutdown)
@@ -542,6 +574,37 @@ class Publish(unittest.TestCase):
             run("--product", "longshot", "publish", "v3.0.0", "--target", "abc", "--notes", notes, f)
         self.assertEqual(FakeForgejo.uploads, [])
         self.assertTrue(FakeForgejo.releases[0]["draft"])   # (no launcher sees it)
+
+    def test_a_list_of_releases_cut_off_is_asked_again(self):
+        # (v1.0.0-rc.11: git.magicbean.dev cut the list of releases off mid-answer, and publish ended with every file built
+        # and signed. Cut off, then a 502: the list is asked for again and the release is published whole)
+        FakeForgejo.read_trouble = [0, 502]
+        notes = self.dir / "notes.md"
+        notes.write_text("notes\n")
+        f = self.dir / "SHA256SUMS"
+        f.write_text("x\n")
+        run("--product", "launcher", "publish", "v1.0.0-rc.11", "--target", "abc", "--notes", notes, f)
+        self.assertEqual(FakeForgejo.read_trouble, [])
+        self.assertEqual([(rid, name) for rid, name, _ in FakeForgejo.uploads], [(1, "SHA256SUMS")])
+        self.assertFalse(FakeForgejo.releases[0]["draft"])
+
+    def test_a_list_of_releases_that_keeps_failing_makes_nothing(self):
+        FakeForgejo.read_trouble = [0] * release.READ_TRIES
+        notes = self.dir / "notes.md"
+        notes.write_text("notes\n")
+        f = self.dir / "SHA256SUMS"
+        f.write_text("x\n")
+        with self.assertRaises(SystemExit):
+            run("--product", "launcher", "publish", "v1.0.0-rc.11", "--target", "abc", "--notes", notes, f)
+        self.assertEqual((FakeForgejo.releases, FakeForgejo.uploads), ([], []))
+
+    def test_only_a_get_is_made_again_by_itself(self):
+        # (a POST or a PATCH the server may have taken is never sent twice behind the caller's back)
+        self.releases_of(("v1.0.0-rc.11", True, True))
+        FakeForgejo.trouble = [500]
+        with self.assertRaises(SystemExit):
+            release.api("POST", "/repos/MagicBeanDev/Test/releases/1/assets?name=x", data=b"x", content_type="text/plain")
+        self.assertEqual(FakeForgejo.trouble, [])
 
     def test_a_draft_left_by_a_failed_run_is_reused(self):
         FakeForgejo.releases = [{"id": 1, "tag_name": "v3.0.0", "draft": True, "prerelease": False,
@@ -787,6 +850,86 @@ class TokenStaysHome(unittest.TestCase):
             os.environ.pop("FORGEJO_UPLOAD_API", None)
             self.assertEqual(release.download(url), b"the sums")
         self.assertEqual(seen, {"forge": "token secret", "store": None})
+
+
+class Artifacts(unittest.TestCase):
+    """artifacts: the build jobs' files, the named artifacts of the run, each unpacked into the folder, from the address
+    without Cloudflare (FORGEJO_UPLOAD_API) though the run's list links them under the public one; nothing written when
+    one is missing or holds a file that is not a plain name"""
+
+    def setUp(self):
+        def zipped(files):
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w") as z:
+                for name, data in files.items():
+                    z.writestr(name, data)
+            return buf.getvalue()
+        zips = {7: zipped({"Longshot-v3.0.0-x86_64.AppImage": b"\x7fELF image"}),
+                8: zipped({"LongshotBuilder-v3.0.0-windows-x64.zip": b"PK builder"}),
+                9: zipped({"../escape": b"out of the folder"})}
+        listing = [{"id": i, "name": n, "expired": False, "archive_download_url":
+                    "https://public.invalid/api/v1/repos/MagicBeanDev/Test/actions/artifacts/%d/zip" % i}
+                   for i, n in ((7, "Longshot-linux-x86_64"), (8, "LongshotBuilder-windows"), (9, "bad"))]
+        seen = self.seen = []
+
+        class Forge(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_GET(self):
+                seen.append((self.path, self.headers.get("Authorization")))
+                zip_of = re.match(r"^/api/v1/repos/MagicBeanDev/Test/actions/artifacts/(\d+)/zip$", self.path)
+                if self.path.startswith("/api/v1/repos/MagicBeanDev/Test/actions/runs/42/artifacts"):
+                    data = json.dumps(listing).encode()
+                elif zip_of and int(zip_of.group(1)) in zips:
+                    data = zips[int(zip_of.group(1))]
+                else:
+                    self.send_response(404)
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Forge)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        self.dir = Path(tempfile.mkdtemp(prefix="release-artifacts-"))
+        self.addCleanup(shutil.rmtree, self.dir, True)
+        patcher = mock.patch.dict(os.environ, {"FORGEJO_UPLOAD_API": "http://127.0.0.1:%d/api/v1" % server.server_port,
+                                               "RELEASE_TOKEN": "t", "GITHUB_REPOSITORY": "MagicBeanDev/Test"})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        os.environ.pop("FORGEJO_API", None)
+        self.out = self.dir / "files"
+
+    def artifacts(self, *names):
+        return run("artifacts", self.out, "--run", 42, *names)
+
+    def test_the_builders_from_the_address_without_cloudflare(self):
+        code, _ = self.artifacts("Longshot-linux-x86_64", "LongshotBuilder-windows")
+        self.assertEqual(code, 0)
+        self.assertEqual(sorted(p.name for p in self.out.iterdir()),
+                         ["Longshot-v3.0.0-x86_64.AppImage", "LongshotBuilder-v3.0.0-windows-x64.zip"])
+        self.assertEqual((self.out / "Longshot-v3.0.0-x86_64.AppImage").read_bytes(), b"\x7fELF image")
+        self.assertEqual([path for path, _ in self.seen], ["/api/v1/repos/MagicBeanDev/Test/actions/runs/42/artifacts?limit=50",
+                                                           "/api/v1/repos/MagicBeanDev/Test/actions/artifacts/7/zip",
+                                                           "/api/v1/repos/MagicBeanDev/Test/actions/artifacts/8/zip"])
+        self.assertEqual({token for _, token in self.seen}, {"token t"})
+
+    def test_a_name_the_run_lacks_writes_nothing(self):
+        with self.assertRaises(SystemExit):
+            self.artifacts("Longshot-linux-x86_64", "LongshotBuilder-nothing")
+        self.assertFalse(self.out.exists())
+
+    def test_a_file_that_is_not_a_plain_name_writes_nothing(self):
+        with self.assertRaises(SystemExit):
+            self.artifacts("Longshot-linux-x86_64", "bad")
+        self.assertFalse(self.out.exists())
+        self.assertFalse((self.dir / "escape").exists())
 
 
 if __name__ == "__main__":

@@ -18,7 +18,12 @@ void logf(const char*, ...) {}
 std::vector<std::string> gpu_device_names;
 bool dlss_built() { return false; }
 DlssWhy dlss_why() { return DLSS_NOT_BUILT; }
+uint64_t device_vram_bytes() { return 0; } // No physical device: the DLSS model row as on an unknown card (K).
 int dlss_fg_skip(unsigned* most) { if (most) *most = 0; return FG_SKIP_NOT_BUILT; }
+int dlss_fg_unavailable() { return FG_SKIP_NOT_BUILT; }
+bool dlss_fg_forced() { return false; }
+int dlss_fg_most() { return 0; }   // (no DLSS FG top: the Frame generation row's own values)
+int framegen_capped(int framegen, int) { return framegen; }
 bool fsr4_built() { return false; }
 FsrWhy fsr4_why() { return FSR_NOT_BUILT; }
 bool fsr3_wanted() { return false; }
@@ -82,10 +87,10 @@ static void render(SDL_Renderer* renderer, ImDrawData* data) {
 }
 
 int main(int argc, char** argv) {
-    if (argc != 4) { fprintf(stderr, "usage: menu-capture FONT_DIRECTORY graphics|audio|controls OUTPUT.png\n"); return 2; }
+    if (argc != 4) { fprintf(stderr, "usage: menu-capture FONT_DIRECTORY graphics|graphics-screen|audio|controls OUTPUT.png\n"); return 2; }
     try {
         const std::string tab = argv[2];
-        if (tab != "graphics" && tab != "audio" && tab != "controls") throw std::runtime_error("unsupported view");
+        if (tab != "graphics" && tab != "graphics-screen" && tab != "audio" && tab != "controls") throw std::runtime_error("unsupported view");
         constexpr int width = 1280, height = 720;
         check(SDL_Init(0) == 0, "SDL initialization");
         SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormat(0, width, height, 32, SDL_PIXELFORMAT_RGBA32);
@@ -119,6 +124,21 @@ int main(int argc, char** argv) {
         }
         while (mkwvk::rows[mkwvk::tab_row_to_global(mkwvk::cur_tab, mkwvk::tab_selected[mkwvk::cur_tab])].heading)
             ++mkwvk::tab_selected[mkwvk::cur_tab];
+        if (tab == "graphics-screen") {
+            bool found = false;
+            for (int i = 0; i < mkwvk::tab_row_count(mkwvk::cur_tab); ++i) {
+                const auto& row = mkwvk::rows[mkwvk::tab_row_to_global(mkwvk::cur_tab, i)];
+                if (!row.heading && std::string(row.name) == "Fullscreen") {
+                    mkwvk::tab_selected[mkwvk::cur_tab] = i;
+                    // A settled Screen view, rather than an off-screen selection or scroll animation.
+                    mkwvk::scroll_at[mkwvk::cur_tab] = mkwvk::scroll_want[mkwvk::cur_tab] = (float)std::max(0, i - 1);
+                    mkwvk::ease_step = 1.f;
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) throw std::runtime_error("Fullscreen row missing from Graphics capture source");
+        }
         // Match the renderer's first unscrolled menu view; no real options file is opened.
         float safe = 0;
         float scale = mkwvk::ui::unit(height, mkwvk::opts.menu_size, &safe);

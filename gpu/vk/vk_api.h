@@ -14,7 +14,14 @@
 extern "C" {
 #endif
 
-#define MKWVK_API_VERSION 24
+#define MKWVK_API_VERSION 34
+enum { HOS_MONITOR_CURRENT = 1, HOS_MONITOR_PRIMARY = 2 };
+typedef struct MkwVkMonitor {
+    char id[512];             /* opaque persistent preference; never a runtime handle or list index */
+    char name[256];           /* UTF-8 label, may collide: the UI also shows dimensions */
+    int width, height;        /* desktop pixels, not DPI-scaled window coordinates */
+    int flags;                /* HOS_MONITOR_* */
+} MkwVkMonitor;
 enum { HOS_OPT_CHEAT_HEARTS = 32, HOS_OPT_CHEAT_FLIGHT, HOS_OPT_CHEAT_ACTION, HOS_OPT_CHEAT_CAMERA, HOS_OPT_CHEAT_SPEED };
 /* (longshot) the Gameplay tab's Text size (host/oot_text_size.c): 0 the game's, 1 110%, 2 125%, 3 150%, 4 175% */
 enum { HOS_OPT_TEXT_SIZE = 10 };
@@ -77,6 +84,11 @@ enum { HOS_OPT_TRANSITION_AUTOSAVE = 59 };
    as the right stick) read it by its number, as they read 8. The existing option callback: no new member. 59 is the
    transition autosave's and 60 stays the item wheel's.) */
 enum { HOS_OPT_MOUSE_INVERT_X = 61 };
+/* (HOS_OPT_HUD_LAYOUT, 71: Graphics' HUD layout, host/hos_wide_ui.c reads it at each present by its number: on a screen
+   that is not 16:9, 0 the HUD's corners at the screen's edges, 1 the HUD in the middle 16:9 as before #95 (on a narrower
+   screen fitted to its width, as the menus). HOS_WIDE_UI, when set, stands over it. The existing option callback: no new
+   member. 62 to 70, 80, 88 and 90 are taken by open pull requests.) */
+enum { HOS_OPT_HUD_LAYOUT = 71 };
 
 /* (longshot) the controls' names (host/nn_hid.c, host/pad_sdl.c, the pad_ and key_ lines of longshot_options.ini):
    the Switch's buttons in nn::hid's bit order, and a gamepad's inputs by position (the bottom face button first:
@@ -246,6 +258,59 @@ typedef struct MkwVkHost {
     int (*audio_output_info)(int index, char *id, int id_capacity, char *name, int name_capacity);
     void (*audio_output_select)(const char *id);
     int (*audio_output_state)(void);
+    /* Version 25: explicit microphone test; gain 0..400 percent, levels[2] pre/post gain peak permille.
+       Call every menu tick (enabled=0 releases only the test reference). Does not play or save capture.
+       Result: 1 testing, 2 capture open, 4 default fallback, 8 fresh samples, 16 clipping, 32 mic Off. */
+    int (*mic_test)(int enabled, int gain, int *levels);
+    /* (version 26, longshot) the performance summary (gpu/vk/perf_report.cpp), asked about once a second while the launcher's
+       Send performance statistics is ticked: the map Link is in and his age ("Kokiri Forest (child)", as the log's map: line;
+       "" before a save is loaded) into map, and the movies' totals so far (host/nn_video.c): [0] pictures shown, [1] skipped to
+       keep up with the sound, [2] shown late (over 50 ms after the one before), [3] decoding time in ns, [4] decoders that did
+       not start (another one took over). Returns the build's version (LONGSHOT_VERSION).
+       Version 30: and Link's pose, for the one-second samples: pose = {x, y, z} his world position (game units), then the
+       gameplay camera's {yaw, pitch} (radians), exact (perf_report.h sends them as cells and bins). *has_pose is 1 only
+       when they are current: 0 unless perf_tracking(1) was called, and 0 while Link isn't updating (the title, the file
+       select, a load: nothing set in the last second) or camera zero isn't the gameplay view (a cutscene's) */
+    const char *(*perf_info)(char *map, int cap, int64_t movie[5], float pose[5], int *has_pose);
+    /* Version 27 (longshot): the frame trace's main-thread columns (RX_VK_FRAME_TRACE, gpu/vk/vk_replay.cpp): the game's main
+       thread's (sead::MainThread) time so far, in ns: [0] waiting for a virtual core, [1] blocked in a wait or sleep, both
+       counted while fps_timing is on, [2] its CPU time. 0 before the game names that thread */
+    int (*main_thread_times)(int64_t out[3]);
+    /* Version 28 (longshot, issue 1280): a C++ allocation of the renderer's refused for 5 s (its new_handler, gpu/vk/vk_main.cpp
+       new_refused, tried again meanwhile): the host's out-of-memory line and notice, waited for, then the game stops, as for the
+       host's own allocations (host/mkw_glue.c hos_alloc_gave_up). what names it in the log. Does not return */
+    void (*out_of_memory)(const char *what);
+    /* Version 29: named fullscreen output selection. Snapshot metadata is copied; empty ID means the
+       current window's screen. select queues work to the window thread, never moves it here.
+       The saved preference may be unavailable; flags describe the actual current/primary screen. */
+    int (*monitor_count)(void);
+    int (*monitor_info)(int index, struct MkwVkMonitor *out);
+    void (*monitor_select)(const char *id);
+    /* Version 30: the opt-in performance sample is being collected (1, at the first frame with the tick on) or not (0: the
+       tick undone, the exit); the host reads Link's pose only while enabled, and forgets it at 0. */
+    void (*perf_tracking)(int enabled);
+    /* (version 32, longshot) a short rumble on the controllers at the Rumble strength as it is now: the Insert menu's row plays it when
+       it is changed (host/pad_sdl.c) */
+    void (*rumble_test)(void);
+    /* (version 33, longshot) the NFC tags of the player's folder (host/nn_nfp.c), for the Insert menu's NFC tab: how many there
+       are (listing them again), one's name (its file's, without the ending), one held to the reader (index; -1: taken away;
+       returns 0 when its file is not an NFC tag's), and what the reader is doing (bits: 1 the game uses NFC tags, 2 it waits for
+       one now, 4 one is held to it, 8 the game has read it), and the folder */
+    int (*nfc_count)(void);
+    const char *(*nfc_name)(int index);
+    int (*nfc_tap)(int index);
+    int (*nfc_state)(void);
+    const char *(*nfc_dir)(void);
+    /* (version 33) a tag on the Switch 2 Pro Controller's reader copied into that folder (host/nn_nfp.c, host/pad_switch2.c):
+       start 1 begins a scan; returns 0 none, 1 looking for a tag, 2 saved (nfc_scan_name: its file's name), 3 no tag in ten
+       seconds, 4 the tag is not a figure's, 5 no such controller over USB, 6 it could not be read or written */
+    int (*nfc_scan)(int start);
+    const char *(*nfc_scan_name)(void);
+    /* (version 34, longshot): the A/B within one run (host/hos_ab.c, HOS_AB), for the frame trace's ab_side column: the side
+       of the frame from from_ns to to_ns (the host's clock, now_ns; from_ns 0 when not known): -1 outside the A/B (none set,
+       its warm-up), 0 the switch's normal value, 1 the A/B's, 2 or 3 those sides in a transition (a flip inside the frame,
+       or less than 0.3 s before its end), which scripts/ab_summary.py leaves out */
+    int (*ab_frame)(int64_t from_ns, int64_t to_ns);
 } MkwVkHost;
 
 /* One completed temporal-upscale sample; all zero while inactive. */
@@ -321,6 +386,10 @@ typedef struct MkwVkRenderer {
        game's thread, before any draw uses it: what the back end kept ready for it can be loaded now (gpu/vk/vk_programs.cpp).
        Its stages' code and control sections are in the game's memory at this call */
     void (*nvn_program_created)(const nvn_prog *p);
+    /* (version 31, longshot) nvn_invalidate when nothing in [gpu, gpu + size) can make it wait: 1, done (the host keeps the
+       game thread's virtual core for it); 0, call nvn_invalidate (with the core given up, as before). Never waits: no lock
+       but a short one of its own (RX_VK_WB_MAX_KB's table), any thread */
+    int (*nvn_invalidate_quick)(uint64_t gpu, uint64_t size);
 } MkwVkRenderer;
 
 /* the DLL's one export: null when Vulkan is not usable (the executable then draws nothing) */

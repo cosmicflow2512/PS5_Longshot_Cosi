@@ -10,8 +10,9 @@
 // the newest one it finds in them. Windows' paths are wide all the way (GetModuleFileNameW, _wgetenv), so any folder name
 // works. On Linux NGX takes only ASCII paths: a folder named otherwise goes to it as /proc/self/fd/<n> (wide()), and the
 // runtime itself has to be in a folder whose real path is ASCII (the log and the menu say so when it is not). The Insert
-// menu's DLSS model row (opts.dlss_model, upscaler_rows.h) chooses DLSS's preset: K by default, M, L, or NVIDIA's default
-// (0). RX_VK_DLSS_PRESET=<letter> (or 0) over it. RX_VK_DLSS_LOG=1: NGX's own log in ours.
+// menu's DLSS model row (opts.dlss_model, upscaler_rows.h) chooses DLSS's preset: K by default (the CNN's E on a card with
+// less than 7 GB of video memory), M, L, or NVIDIA's default (0). RX_VK_DLSS_PRESET=<letter> (or 0) over it.
+// RX_VK_DLSS_LOG=1: NGX's own log in ours.
 //
 // NVIDIA's NGX SDK is not part of Longshot (NVIDIA's license): a local build fetches it (scripts/ngx_sdk.py) and builds with
 // LONGSHOT_NGX_SDK, which compiles this file with LONGSHOT_NGX. Without it only the stubs at the end are here.
@@ -33,7 +34,10 @@
 #endif
 
 #include "dlss_checks.h"
+#include "perf_report.h"
 #include "upscaler_rows.h"
+#include "vk_fps.h"
+#include "vk_internal.h"
 #include "vk_menu.h"
 #include "vk_paths.h"
 #include "vk_reactive.h"
@@ -120,18 +124,8 @@ void NVSDK_CONV ngx_log(const char* message, NVSDK_NGX_Logging_Level, NVSDK_NGX_
 
 namespace fs = std::filesystem;
 #ifdef _WIN32
-/// The game folder (game_module_path's rule: bin\longshot.exe beside image.bin is the folder above bin), from
-/// GetModuleFileNameW: a folder with characters outside the ANSI code page is still the right one
-fs::path game_dir() {
-    std::wstring exe(32768, L'\0');
-    const DWORD n = GetModuleFileNameW(nullptr, exe.data(), (DWORD)exe.size());
-    if (!n || n >= exe.size()) return {};
-    exe.resize(n);
-    fs::path dir = fs::path(exe).parent_path();
-    if (!_wcsicmp(dir.filename().c_str(), L"bin") && GetFileAttributesW((dir.parent_path() / L"image.bin").c_str()) != INVALID_FILE_ATTRIBUTES)
-        dir = dir.parent_path();
-    return dir;
-}
+/// The game folder (vk_paths.h: from GetModuleFileNameW, so any folder name works)
+fs::path game_dir() { return game_dir_path(); }
 /// An environment variable as a path (_wgetenv: not through the ANSI code page); empty when unset
 fs::path env_path(const wchar_t* name) {
     const wchar_t* e = _wgetenv(name);
@@ -148,11 +142,7 @@ std::string shown(const fs::path& p) {
 /// A path for NGX, which takes wide strings: Windows' own
 std::wstring wide(const fs::path& p) { return p.native(); }
 #else
-fs::path game_dir() {
-    char exe[MAX_PATH];
-    const DWORD n = game_module_path(exe, MAX_PATH);
-    return fs::path(std::string(exe, n)).parent_path();
-}
+fs::path game_dir() { return game_dir_path(); }
 fs::path env_path(const char* name) {
     const char* e = getenv(name);
     return e && *e ? fs::path(e) : fs::path();
@@ -312,10 +302,11 @@ bool ngx_init() {
     return true;
 }
 
-/// DLSS's preset: the DLSS model row's, RX_VK_DLSS_PRESET over it (upscaler_rows.h dlss_preset)
+/// DLSS's preset: the DLSS model row's (its K preset E on a card with less than 7 GB of video memory), RX_VK_DLSS_PRESET
+/// over it (upscaler_rows.h dlss_preset, cnn_for_vram: the row's text says the same)
 unsigned wanted_preset() {
     static const char* const env = getenv("RX_VK_DLSS_PRESET");
-    return upscaler_rows::dlss_preset(opts.dlss_model, env && *env ? env : nullptr);
+    return upscaler_rows::dlss_preset(opts.dlss_model, env, device_vram_bytes());
 }
 
 /// DLSS's feature for this output size and preset, made when either changes (cmd: its creation's work): the engine's
@@ -331,9 +322,13 @@ int prepare(VkCommandBuffer cmd, uint32_t rw, uint32_t rh, uint32_t ow, uint32_t
                                           kPresetSettle);
     // (the game's native HDR: State::feature_hdr. What the game presents, not the option and the swapchain: with Native
     // picked and the game's picture not PQ, the scene is LDR, and an HDR feature would get LDR colour)
-    // (RX_VK_DLSS_HDR=0: the LDR feature and the clamped colour with Native too, as before this; for comparisons)
-    static const bool hdr_allowed = !getenv("RX_VK_DLSS_HDR") || atoi(getenv("RX_VK_DLSS_HDR")) != 0;
-    const bool hdr = hdr_allowed && present_native_pq.load(std::memory_order_relaxed);
+    // (longshot) and DLAA before the game's bloom and tone map (vk_temporal.cpp temporal_pre_bloom): the scene's linear light,
+    // past 1 at every highlight, before the exposure. The same feature takes the tone-mapped picture, made linear, in a frame
+    // that runs it at the network instead
+    const bool hdr = present_native_pq.load(std::memory_order_relaxed) || temporal_hdr_input();
+    // (for the log: which of the two it is. Not the game's native HDR: DLAA before the bloom asks for it)
+    const char* const hdr_by = present_native_pq.load(std::memory_order_relaxed) ? "the game's native HDR"
+                                                                                : "DLAA before the bloom";
     if (s.feature && s.feature_ow == ow && s.feature_oh == oh && rw <= s.feature_rw && rh <= s.feature_rh &&
         rw >= s.min_rw && rh >= s.min_rh && s.feature_preset == preset && s.feature_hdr == hdr &&
         (!native_aa || s.feature_aa))
@@ -342,7 +337,9 @@ int prepare(VkCommandBuffer cmd, uint32_t rw, uint32_t rh, uint32_t ow, uint32_t
     char why[160];
     if (!s.feature && !s.features_made) snprintf(why, sizeof why, "the first");
     else if (!s.feature) snprintf(why, sizeof why, "again after it was let go");
-    else if (s.feature_hdr != hdr) snprintf(why, sizeof why, "the game's native HDR turned %s", hdr ? "on" : "off");
+    else if (s.feature_hdr != hdr)
+        snprintf(why, sizeof why, "HDR colour %s: %s", hdr ? "on" : "off",
+                 hdr ? hdr_by : "neither the game's native HDR nor DLAA before the bloom");
     else if (s.feature_ow != ow || s.feature_oh != oh)
         snprintf(why, sizeof why, "the output went from %ux%u to %ux%u", s.feature_ow, s.feature_oh, ow, oh);
     else if (s.feature_preset != preset)
@@ -361,14 +358,17 @@ int prepare(VkCommandBuffer cmd, uint32_t rw, uint32_t rh, uint32_t ow, uint32_t
     const bool aa = rw == ow && rh == oh;
     NVSDK_NGX_PerfQuality_Value mode = NVSDK_NGX_PerfQuality_Value_DLAA;
     unsigned max_w = ow, max_h = oh, min_w = ow, min_h = oh;   // (DLAA: the render size is the output's, one size)
+    unsigned create_w = ow, create_h = oh;
     if (!aa) {
         dlss_checks::ModeRange ranges[5];
         NVSDK_NGX_PerfQuality_Value which[5];
+        unsigned optimal[5][2]{};
         int n = 0;
         for (const NVSDK_NGX_PerfQuality_Value m : scaled) {
             unsigned w = 0, h = 0, xw = 0, xh = 0, nw = 0, nh = 0;
             float sharp = 0;
             if (NVSDK_NGX_FAILED(NGX_DLSS_GET_OPTIMAL_SETTINGS(s.caps, ow, oh, m, &w, &h, &xw, &xh, &nw, &nh, &sharp)) || !w) continue;
+            optimal[n][0] = w, optimal[n][1] = h;
             ranges[n] = {nw, nh, xw, xh}, which[n++] = m;
         }
         dlss_checks::ModeRange took;
@@ -387,6 +387,7 @@ int prepare(VkCommandBuffer cmd, uint32_t rw, uint32_t rh, uint32_t ow, uint32_t
             return *fail = refused[at], 0;
         }
         mode = which[k], max_w = took.max_w, max_h = took.max_h, min_w = took.min_w, min_h = took.min_h;
+        create_w = optimal[k][0], create_h = optimal[k][1];
         if (took.max_w != ranges[k].max_w || took.max_h != ranges[k].max_h || took.min_w != ranges[k].min_w ||
             took.min_h != ranges[k].min_h)
             logf("vk: NVIDIA DLSS: the render size %ux%u is a little outside quality mode %d's range (%ux%u to %ux%u): taken by "
@@ -401,16 +402,19 @@ int prepare(VkCommandBuffer cmd, uint32_t rw, uint32_t rh, uint32_t ow, uint32_t
         temporal_later([old] { NVSDK_NGX_VULKAN_ReleaseFeature(old); });
         s.feature = nullptr;
     }
-    // (the DLSS model row's preset for every mode, K by default: NVIDIA's transformer model. 0: NVIDIA's own per mode)
+    // (the DLSS model row's preset for every mode, K by default: NVIDIA's transformer model, or its CNN's E under 7 GB of
+    // video memory. 0: NVIDIA's own per mode)
     static_assert(NVSDK_NGX_DLSS_Hint_Render_Preset_K == 11 && NVSDK_NGX_DLSS_Hint_Render_Preset_L == 12 &&
-                  NVSDK_NGX_DLSS_Hint_Render_Preset_M == 13 && NVSDK_NGX_DLSS_Hint_Render_Preset_Default == 0);
+                  NVSDK_NGX_DLSS_Hint_Render_Preset_M == 13 && NVSDK_NGX_DLSS_Hint_Render_Preset_Default == 0 &&
+                  NVSDK_NGX_DLSS_Hint_Render_Preset_E == upscaler_rows::kPresetE);
     for (const char* k : {NVSDK_NGX_Parameter_DLSS_Hint_Render_Preset_DLAA, NVSDK_NGX_Parameter_DLSS_Hint_Render_Preset_Quality,
                           NVSDK_NGX_Parameter_DLSS_Hint_Render_Preset_Balanced, NVSDK_NGX_Parameter_DLSS_Hint_Render_Preset_Performance,
                           NVSDK_NGX_Parameter_DLSS_Hint_Render_Preset_UltraPerformance,
                           NVSDK_NGX_Parameter_DLSS_Hint_Render_Preset_UltraQuality})
         NVSDK_NGX_Parameter_SetUI(s.params, k, preset);
     NVSDK_NGX_DLSS_Create_Params cp{};
-    cp.Feature.InWidth = max_w, cp.Feature.InHeight = max_h, cp.Feature.InTargetWidth = ow, cp.Feature.InTargetHeight = oh;
+    // Feature creation takes the mode's recommended size; the input images still cover its dynamic range.
+    cp.Feature.InWidth = create_w, cp.Feature.InHeight = create_h, cp.Feature.InTargetWidth = ow, cp.Feature.InTargetHeight = oh;
     cp.Feature.InPerfQualityValue = mode;
     // (LDR colour, already tonemapped: no exposure; motion at the render size, not jittered; depth not reversed. With the
     // game's native HDR the colour goes past 1: an HDR feature, given linear light, with DLSS's own exposure)
@@ -435,10 +439,12 @@ int prepare(VkCommandBuffer cmd, uint32_t rw, uint32_t rh, uint32_t ow, uint32_t
     s.refused = 0;
     s.feature_aa = mode == NVSDK_NGX_PerfQuality_Value_DLAA;
     s.features_made++;
+    logf("vk: NVIDIA DLSS: feature create size %ux%u (recommended), input resources %ux%u", create_w, create_h, max_w, max_h);
+    if (s.features_made > 1) perf_event(perf_report::kDlssRecreated);   // (made again in play: a stall)
     logf("vk: NVIDIA DLSS: feature %llu made (%s; frame %llu, %.1f ms of CPU): %ux%u (%ux%u to %ux%u) -> %ux%u, mode %d, "
-         "preset %c%s%s", (unsigned long long)s.features_made, why, (unsigned long long)texture_frame_no(), made_ms, rw, rh,
+         "preset %c%s%s%s%s", (unsigned long long)s.features_made, why, (unsigned long long)texture_frame_no(), made_ms, rw, rh,
          min_w, min_h, max_w, max_h, ow, oh, (int)mode, upscaler_rows::preset_letter(preset),
-         preset ? "" : " (NVIDIA's default)", hdr ? ", HDR colour, linear (the game's native HDR)" : "");
+         preset ? "" : " (NVIDIA's default)", hdr ? ", HDR colour, linear (" : "", hdr ? hdr_by : "", hdr ? ")" : "");
     *in_w = s.feature_rw, *in_h = s.feature_rh;
     return 2;   // (a new history)
 }
@@ -555,7 +561,7 @@ void dlss_probe() {
 // picture and the temporal chain's depth, motion (with the actor motion in it, vk_temporal.cpp) and camera, which are copied
 // at the chain's evaluation (dlss_fg_inputs) and handed to NGX at the present (dlss_fg_frames). The Insert menu's Frame
 // generation row's 2x and up say how many frames are made (its Auto stays the renderer's own), its Frame generation by row
-// whether DLSS-G makes them (Auto, the default) or the renderer's own; RX_VK_DLSS_FG=0 / 1 over it for a run. Frame
+// whether DLSS-G makes them (DLSS FG, the default where it runs) or the renderer's own; RX_VK_DLSS_FG=0 / 1 over it for a run. Frame
 // generation's device extensions are asked of NGX before the device exists whenever DLSS may run, so the row needs no
 // restart. Its runtime, nvngx_dlssg.dll (libnvidia-ngx-dlssg.so), is looked for where DLSS's is (runtime_dirs). Where it
 // does not make a set, the renderer's own methods do, and the log says every 600 presents how many sets DLSS-G made and why
@@ -591,6 +597,8 @@ struct Fg {
     // (read without mu, each present: a feature held (dlss_fg_idle), and NGX's answer a no or its feature given up after
     // three failed creations or kFgRefusalsOff refused sets in a row (dlss_fg_runs))
     std::atomic<bool> held{false}, start_failed{false};
+    // (read without mu, by the menu's thread: NGX has answered, yes or no (fg_start). start_failed is set while it is asked)
+    std::atomic<bool> answered{false};
     // (read without mu, each present: `most` once NGX has answered (fg_start), 0 before. A multiplier that asks for more is
     // the renderer's own to make (dlss_fg_frames), so the swapchain is not made for DLSS-G: dlss_fg_runs)
     std::atomic<unsigned> most_known{0};
@@ -668,6 +676,10 @@ void fg_mul(const float* a, const float* b, float* out) {   // (row major: out =
 bool fg_start(Fg& g) {
     if (g.tried) return g.ok;
     g.tried = true;
+    struct Answered {   // (at every return below: dlss_fg_unavailable reads start_failed from here on)
+        Fg& g;
+        ~Answered() { g.answered.store(true, std::memory_order_release); }
+    } answered{g};
     g.start_failed = true;   // (until NGX says yes, below)
     // (not on a device DLSS does not run on: an AMD or Intel GPU, without NVIDIA's extensions (dlss_device_extensions), does
     // not start NGX at its first present)
@@ -824,14 +836,59 @@ int dlss_fg_skip(unsigned* most) {
 
 bool dlss_fg_wanted() { return fg_asked(); }
 
+int dlss_fg_unavailable() {
+    if (dlss_why() != DLSS_OK) return FG_SKIP_DEVICE;   // (RX_VK_DLSS=0 too: dlss_why's DLSS_ENV_OFF)
+    if (!fg_possible()) return FG_SKIP_OFF;
+    const Fg& g = fgs();
+    if (!g.answered.load(std::memory_order_acquire) || !g.start_failed.load(std::memory_order_relaxed)) return FG_SKIP_NONE;
+    // (most_known is set only by NGX's yes: a no after it is its feature given up, refused sets or failed creations)
+    return g.most_known.load(std::memory_order_relaxed) ? FG_SKIP_REFUSED : FG_SKIP_START;
+}
+
+bool dlss_fg_forced() {
+    static const bool forced = env_switch("RX_VK_DLSS_FG") > 0;   // (as fg_asked)
+    return forced && fg_possible();
+}
+
+bool dlss_fg_holds() {
+    // (fg_skip is this set's reason: dlss_fg_frames sets it at each set it does not make, but one with nothing to blend from,
+    // which framegen_record makes no frames for anyway. FG_SKIP_INPUTS comes after NGX's yes and the runtime's most. Only
+    // where the game draws no 3D scene (temporal_scene_now): an Upscaler that gives no inputs in play (failed, refused, not
+    // this frame) leaves those sets to the built-in one, as before)
+    return fg_asked() && temporal_wanted() && !temporal_scene_now() &&
+           fg_skip.load(std::memory_order_relaxed) == FG_SKIP_INPUTS;
+}
+
+void dlss_fg_probe() {
+    // (DLSS's own answer first: dlss_probe, on the same thread. Where DLSS does not run, the row knows without NGX)
+    if (!fg_possible() || dlss_why() != DLSS_OK || !dev.device) return;
+    Fg& g = fgs();
+    if (g.answered.load(std::memory_order_acquire)) return;
+    std::lock_guard lk(g.mu);   // (as dlss_fg_frames: then ngx_init's own lock)
+    if (!g.closed) fg_start(g);
+}
+
 bool dlss_fg_runs(int frames) {
     if (!fg_asked() || dlss_why() != DLSS_OK) return false;
     const Fg& g = fgs();
     if (g.start_failed.load(std::memory_order_relaxed)) return false;
     // (more frames a set than its runtime makes: the renderer's own makes them all (dlss_fg_frames' too_many). Known once
-    // NGX has answered, at the first present with a fixed multiplier; until then it is taken to make them)
+    // NGX has answered, at the start-up screen or the first present with a fixed multiplier; until then it is taken to make
+    // them. The multiplier as it runs stops at that most + 1 from then on (vk_framegen.h framegen_now))
     const unsigned most = g.most_known.load(std::memory_order_relaxed);
     return !most || frames <= (int)most;
+}
+
+// (DLSS-G makes its frames from a temporal Upscaler's depth and motion (dlss_fg_inputs): without one on the Upscaler row
+// (temporal_wanted) the renderer's own or FSR 3.1 makes every set, at the row's multiplier, as when NGX said no or its
+// feature was given up)
+int dlss_fg_most() {
+    if (!fg_asked() || dlss_why() != DLSS_OK || !temporal_wanted()) return 0;
+    const Fg& g = fgs();
+    // (most_known is 0 until NGX's answer, at the start-up screen (dlss_fg_probe) or the first present with a fixed
+    // multiplier)
+    if (g.start_failed.load(std::memory_order_relaxed)) return 0;
+    return (int)g.most_known.load(std::memory_order_relaxed);
 }
 
 void dlss_fg_device_extensions(std::vector<const char*>& want, const std::vector<VkExtensionProperties>& all) {
@@ -972,11 +1029,16 @@ int dlss_fg_frames(VkCommandBuffer cmd, VkImage color, VkImageView color_view, u
     }
     if (!blend) return g.not_blended++, 0;
     if ((unsigned)count > g.most) {
+        // (no temporal Upscaler: nothing to make them from, which is the reason here (the multiplier is the row's then,
+        // dlss_fg_most), not the runtime's most)
+        if (!temporal_wanted()) return g.no_inputs++, skip(FG_SKIP_INPUTS);
         static bool told = false;   // (once a run: the 600-present lines count them)
         if (!told) {
             told = true;
+            // (only before NGX's answer is known to the multiplier (framegen_now), which stops at its runtime's most + 1)
             logf("vk: DLSS Frame Gen (NGX): %d made frames asked, but its runtime makes %u at most (an older %s?): the "
-                 "renderer's own makes them, and V-Sync Auto keeps its mode without DLSS-G", count, g.most, kFgRuntime);
+                 "renderer's own makes this set; Frame generation runs at %ux from the next", count, g.most, kFgRuntime,
+                 g.most + 1);
         }
         fg_skip_most.store(g.most, std::memory_order_relaxed);
         return g.too_many++, skip(FG_SKIP_TOO_MANY);
@@ -1121,7 +1183,9 @@ void dlss_fg_idle() {
 }
 
 void dlss_fg_close() {
-    if (!fg_asked()) return;
+    // (not only where it is asked for now: dlss_fg_probe asks NGX at the start-up screen at Built-in FG too, and closed stops
+    // a probe still running at the exit)
+    if (!fg_possible()) return;
     Fg& g = fgs();
     std::lock_guard lk(g.mu);
     if (g.closed) return;
@@ -1132,7 +1196,17 @@ void dlss_fg_close() {
     const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(2);
     std::unique_lock qk(dev.present_mu, std::defer_lock);
     while (!qk.try_lock() && std::chrono::steady_clock::now() < until) std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    if (!qk.owns_lock()) {
+    // (and the presents' own queues, whose presents let dev.present_mu go while they run: a present stuck there held
+    // device_wait_idle_locked on its lock with no end. Free once while present_mu is held, they stay free: a present takes
+    // present_mu first; only the presenter thread's (RX_VK_PRESENT_THREAD, opt-in) does not)
+    const auto free_by_then = [&](std::mutex& m) {
+        for (;;) {
+            if (m.try_lock()) return m.unlock(), true;
+            if (std::chrono::steady_clock::now() >= until) return false;
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    };
+    if (!qk.owns_lock() || !free_by_then(dev.present_queue_mu) || !free_by_then(dev.presenter_queue_mu)) {
         logf("vk: DLSS Frame Gen (NGX): the queue stayed busy at the exit: its feature left to the process's end");
         return;
     }
@@ -1155,7 +1229,12 @@ int dlss_fg_skip(unsigned* most) {
     if (most) *most = 0;
     return FG_SKIP_NOT_BUILT;
 }
+int dlss_fg_unavailable() { return FG_SKIP_NOT_BUILT; }
+void dlss_fg_probe() {}
+bool dlss_fg_forced() { return false; }
+bool dlss_fg_holds() { return false; }
 bool dlss_fg_runs(int) { return false; }
+int dlss_fg_most() { return 0; }
 void dlss_fg_device_extensions(std::vector<const char*>&, const std::vector<VkExtensionProperties>&) {}
 void dlss_fg_inputs(VkCommandBuffer, const TemporalFrame&, const float*, const float*, const float*, bool) {}
 int dlss_fg_frames(VkCommandBuffer, VkImage, VkImageView, uint32_t, uint32_t, int, const VkImage*, const VkImageView*, bool,

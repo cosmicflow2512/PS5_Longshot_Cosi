@@ -18,6 +18,12 @@
   <a href="https://longshot.magicbean.dev/">Longshot for PC (upstream)</a>
 </p>
 
+> [!NOTE]
+> **Fork `cosmicflow2512/PS5_Longshot_Cosi`:** PS5_Longshot (heydemoura) with its open pull requests #6, #18–#23, #32, #33 and
+> #35 merged, on [Longshot v3.0.0](https://git.magicbean.dev/MagicBeanDev/Longshot/releases) (2026-11-19). The title is
+> **PPSA99198** (#35). Lossless Scaling's frame generation (#21) reads your own `Lossless.dll` from the title's `lossless/`
+> folder. Experimental: it builds and its checks pass; on the console it is untested.
+
 > [!IMPORTANT]
 > **This repository is the PlayStation 5 version of Longshot.** It is a port of
 > [Longshot](https://git.magicbean.dev/MagicBeanDev/Longshot) to the PS5, with
@@ -72,10 +78,10 @@ what does not yet. Open problems are collected in tracking issues, linked below.
 | Stutter when entering new areas | ⚠️ Still happens the first time you visit a place. The next visits are smooth |
 | Performance | ⚠️ Depends on the PC: some reach a steady 60 fps, others stay below it, more so in Hyrule Field |
 | Hyrule Field, Castle Town, Kakariko and the dungeons | ⚠️ Players got there, with open bugs: lighting and shadows ([#1004](https://github.com/NotRexed/Hookshot/issues/1004)), crashes and freezes ([#2507](https://github.com/NotRexed/Hookshot/issues/2507)) |
-| Ultrawide and 4:3 | ✅ Works. The Aspect ratio row's default, Monitor's shape, widens the 3D to the screen and keeps the HUD and movies in the middle 16:9 ([#2119](https://github.com/NotRexed/Hookshot/pull/2119)) |
+| Ultrawide and 4:3 | ✅ Works. The Aspect ratio row's default, Monitor's shape, widens the 3D to the screen ([#2119](https://github.com/NotRexed/Hookshot/pull/2119)); the HUD keeps its 16:9 size with its corners at the screen's edges, or in the middle 16:9 with the HUD layout row; movies stay in the middle 16:9 |
 | NVIDIA cards | ✅ Works. The most tested |
-| AMD cards | ⚠️ Many tested: reports from the RX 6600, RX 6800 XT, RX 7800 XT, RX 7900 XTX and RX 9070 XT. On Windows, the RX 6600 to RX 6950 XT and their mobile and Pro models (Navi 21, 22 and 23) draw task and mesh shaders through the compute fallback by default: the driver lost the GPU on their own mesh shaders on an RX 6700 XT, an RX 6800 XT and, in one report in Mako, an RX 6600 ([#1747](https://github.com/NotRexed/Hookshot/pull/1747), [#1992](https://github.com/NotRexed/Hookshot/pull/1992), [#2215](https://github.com/NotRexed/Hookshot/pull/2215)); another RX 6600 played 15-20 minutes on them ([Longshot #130](https://git.magicbean.dev/MagicBeanDev/Longshot/issues/130)). The RX 6400 and 6500 XT (Navi 24) keep their own mesh shaders, as no report has them losing the GPU; `RX_VK_TASK_MESH_FALLBACK=1` tries the fallback. Driver crashes and device lost are still reported ([#996](https://github.com/NotRexed/Hookshot/issues/996)) |
-| Intel cards | ❓ Few reports, many of them black screens or crashes ([#999](https://github.com/NotRexed/Hookshot/issues/999)). On Windows, Intel's shader compiler is entered by one thread, and a shader it faults on is left out instead of closing the game, on later starts too ([#252](https://git.magicbean.dev/MagicBeanDev/Longshot/pulls/252)). Made for an Intel UHD laptop with 4 threads and 16 GB that crashed in `igvk64.dll` (see [Intel laptops](https://git.magicbean.dev/MagicBeanDev/Longshot#intel-laptops)): not yet tested on an Intel GPU |
+| AMD cards | ⚠️ Tested on several Radeon cards. Compatibility and performance vary by card, driver and operating system. Longshot automatically uses rendering workarounds on affected Windows cards and AMD GPUs on Linux (see [technical details](docs/development.md#switches-for-testing-and-debugging)). Crashes and severe slowdowns remain reported on some configurations ([RX 6600](https://git.magicbean.dev/MagicBeanDev/Longshot/issues/933), [Radeon 860M](https://git.magicbean.dev/MagicBeanDev/Longshot/issues/1040)). |
+| Intel cards | ❓ Few reports, many of them black screens or crashes ([#999](https://github.com/NotRexed/Hookshot/issues/999)). On Windows, Intel's shader compiler is entered by one thread, and a shader it faults on is left out instead of closing the game, on later starts too ([#252](https://git.magicbean.dev/MagicBeanDev/Longshot/pulls/252)). Made for an Intel UHD laptop with 4 threads and 16 GB that crashed in `igvk64.dll` (see [Intel laptops](#intel-laptops)): not yet tested on an Intel GPU |
 | Pre-rendered movies on a slow CPU | ⚠️ Shown rather than skipped when the decoder is slower than the movie, so the picture can fall behind the sound. With 4 logical processors or fewer the decoder uses 2 threads, leaving the game its own. The first picture can still be black on some PCs |
 | Cards without mesh shaders (such as NVIDIA GTX 10 and AMD RX 5000) | ⚠️ Run through the compute fallback (since v2.0.6), which runs the mesh programs as compute shaders on cards with buffer device addresses: slower, and it leaves out the mesh draws that take their count from a buffer ([#640](https://github.com/NotRexed/Hookshot/issues/640)) |
 | Linux | ✅ Works with the AppImage. Tested on several distributions (CachyOS, Fedora, Bazzite, SteamOS) and cards, with open problems on some AMD cards ([#1000](https://github.com/NotRexed/Hookshot/issues/1000)) |
@@ -205,7 +211,7 @@ network. The title on the console does not look for updates.
 - **Without the window:** `--cli --game <file> --out <folder> --model base|pro` after the AppImage's name, or after
   `LongshotPS5Builder.exe`. `--cli --check` checks the builder's own parts.
 
-## In-game menu
+## On the PS5: the in-game menu and controls
 
 Longshot's own menu (resolution, frame generation, sound, controls) is in the PS5 title too, opened and moved in with
 the controller.
@@ -256,6 +262,566 @@ The DualSense of the user who started the title. By default the buttons sit wher
 Rumble goes to the controller. Motion controls, the touch pad's surface and the microphone are not read. The menu's
 Controls tab can move the buttons.
 
+> The section below is Longshot v3.0.0's own (the PC game's menu); on the console the menu opens as described above.
+
+## In-game menu
+
+By default, press <kbd>Insert</kbd>, <kbd>F1</kbd> or <kbd>Esc</kbd> in game. On a controller, press Home or Select and
+Start together; on a DualShock 4 or DualSense, clicking the touchpad does the same as <kbd>F1</kbd>.
+The same keys close it; with every Menu shortcut, <kbd>Esc</kbd> goes back a page or closes the open menu.
+<kbd>F1</kbd> always works. **Controls → Menu shortcut** can leave <kbd>Insert</kbd> free for another overlay (F1 only).
+With Insert or F1, or with F1 only, <kbd>Esc</kbd> does not open the menu: it only lets the mouse go. Options saved by
+an older version on Insert or F1, the default then, move to Insert, F1 or Esc; F1 only stays.
+The menu has five tabs, Graphics, Audio, Gameplay, Controls and Debug:
+<kbd>Q</kbd> and <kbd>E</kbd> (or <kbd>Tab</kbd> and <kbd>Shift</kbd>+<kbd>Tab</kbd>) switch between them, LB and RB on
+a controller (or the triggers). <kbd>Up</kbd> and <kbd>Down</kbd> choose a row, <kbd>Left</kbd> and <kbd>Right</kbd>
+change it (<kbd>Enter</kbd> changes it too); beside the rows, the help says what the row is and, on a line of its own,
+what the value chosen does. On a controller the D-pad chooses and changes, A changes too and opens a page (Motion,
+Controls, the Teleport list, the inventory), and B goes back or closes the menu: A and B are the buttons your layout puts the Switch's A and B
+on (with the Nintendo layout, A is the right face button). The mouse is free while the menu is open: click a tab, click a row's name to choose it (its
+value stays), click the left or right half of a value to lower or raise it, drag a slider, turn the wheel to scroll the rows (it never changes a value), and right-click to go back. The
+button prompts at the bottom show the keys or the controller's buttons, whichever you used last. Your choices are saved
+in `longshot_options.ini`: with your saves when the launcher starts the game on Windows, so every version keeps them, else in
+the game folder ([Where the files go](#where-the-files-go)).
+
+The menu, the FPS counter and the start-up screen are drawn in the style of the game's own menus. They use the game's
+own menu font, read into memory from your game files (the romfs folder the game runs from) the first time one of them is
+drawn. It is never copied anywhere, and Longshot does not include it. Without it, or if it has no Latin letters, they use
+Libertinus, which Longshot includes.
+
+The rows marked "after a restart" below are read when the game starts. While one is changed, it is tagged "After
+restart" and the help on the Graphics tab lists it; closing the menu then asks whether to restart now. **Later** keeps
+the change for the next start (and is not asked again until you change one of those rows); **Restart now** saves your
+choices and starts the game again, so progress since your last save is lost.
+
+A row for something this PC cannot use is not shown: NVIDIA Reflex and AMD Anti-Lag 2 without a GPU and driver that
+have them, the DLSS model where DLSS does not run. HDR paper white and
+HDR peak brightness and HDR contrast show only while HDR is on, the HDR tone mapper only with HDR set to Native.
+
+The Graphics tab groups its rows under section titles: Resolution and upscaling, Frame generation and latency, Screen,
+HDR, Detail, and GPU and memory (last: the rows to change when something is wrong). The table lists them in that order.
+
+| Tab | Option | Choices | Default |
+|---|---|---|---|
+| Graphics | Quality preset | Custom, Minimum (4GB), Low (6GB), Balanced (8GB), High (12GB), Ultra (16GB+), Auto (this PC) | Auto (this PC) on a first start; Custom in an options file from before it |
+| | Aspect ratio | The shapes your screen's resolutions have, narrowest first (5:4, 4:3, 16:10, 16:9, 21:9, 32:9, ...), your monitor's own marked "(monitor's)" (after a restart) | Your monitor's |
+| | Output resolution | The Aspect ratio's sizes: your screen's resolutions and the common ones (1440p, 4K, 5K at 16:9; 1920x1200, 2560x1600 at 16:10; 3440x1440 at 21:9; ...), and 2048x1152 (the game's own reduced size, 80% of its 2560x1440, marked "(reduced)") at 16:9; your screen's own size is marked "(native)" (after a restart) | 2560x1440, the game's own picture, or your screen's size where it is smaller (a Steam Deck's 1280x800, a 1080p monitor), at its own shape (a 2560x1080 ultrawide starts at 2560x1080, a 2256x1504 laptop at 2256x1504); Auto (this PC) leaves it as it is |
+| | Custom output size | A size of your own, typed as `<width>x<height>` (after a restart) | None |
+| | Profile | Docked, Handheld (after a restart) | Docked; a quality preset sets it |
+| | Upscaler | Game's own, NVIDIA DLSS (only in builds with NVIDIA's DLSS SDK, below, on NVIDIA RTX GPUs), AMD FSR 3.1 (every build, on GPUs it runs on, below), AMD FSR 4 (only in builds with FSR 4, below, on GPUs AMD's files cover), Off (no upscaling), Intel XeSS (Windows, with Intel's `libxess.dll` beside the game, below). NVIDIA DLAA, AMD FSR 4 Native AA and Intel XeSS Native AA are DLSS's, FSR 4's and XeSS's Native, chosen on the Render resolution row | Game's own; Auto (this PC) chooses DLSS or FSR 4 where they run, never XeSS |
+| | DLSS model | Transformer (K) (CNN (E) in its place on cards with less than 7 GB of video memory), Transformer 2 (M), Transformer 2 (L), NVIDIA default (shown where DLSS runs; used by DLSS and DLAA) | Transformer (K); CNN (E) under 7 GB |
+| | DLAA before the bloom | Off, On: where NVIDIA DLAA smooths the picture, after the game's bloom and tone map or before them (shown with NVIDIA DLSS; changeable with Render resolution Native (DLAA) only; changes at once; `RX_VK_DLSS_PRE_BLOOM` over it for one run) | Off |
+| | Render resolution | Auto (the game's own dynamic resolution), 100%, 75%, 67%, 50% (each with its size). With DLSS or FSR 4: Auto, Native (DLAA or FSR 4 Native AA: the 3D at full size), 92%, 83%, 75%, Quality (67%), Balanced (58%), Performance (50%), Ultra Performance (33%). With Intel XeSS the same stops, named by the XeSS mode each runs under: Native (XeSS Native AA), Ultra Quality Plus (92%, 83%), 75%, Ultra Quality (67%), Balanced (58%, 50%), Ultra Performance (33%). With FSR 3.1: Auto, 100% (its native AA), then the same as DLSS from 92%. With Off: Auto, 100%, 75%, 67%, 50%, 33% | Auto; a quality preset sets it |
+| | Sharpness | 0 to 100%, in steps of 10 | 0%; a quality preset sets it |
+| | Frame generation | Off, Auto (it shows who makes its frames: FSR 3.1 FG or Built-in FG), 2x to 8x; with DLSS FG up to what NVIDIA's runtime makes on the GPU (6x on an RTX 50, 2x on an RTX 40) | Off |
+| | Frame generation by | Shown while Frame generation is on. DLSS FG (NVIDIA DLSS Frame Generation: RTX 40 and newer, with a temporal Upscaler), FSR 3.1 FG (AMD FSR 3.1's frame interpolation, from the scene's depth and motion: any GPU), Built-in FG. DLSS FG is offered only where it runs; elsewhere the row has FSR 3.1 FG and Built-in FG, and its line at FSR 3.1 FG says why not DLSS FG (the log has NVIDIA's answer). At DLSS FG, FSR 3.1 makes the frames DLSS FG does not (Frame generation's Auto). At DLSS FG, the game's own menus, movies and loading screens show only the game's own frames (they have no Upscaler picture to make frames from): the row's line and the FPS counter say DLSS FG paused. With an Upscaler that is not temporal, the built-in one makes the frames and the line says why. `RX_VK_DLSS_FG=1` fixes the row at DLSS FG for a run. Changes at once | DLSS FG where it runs, else FSR 3.1 FG (an options file's Auto from before is this default) |
+| | Game frame rate cap | 30, 60 (the console's), 90, 120, 144, 165, 240, Uncapped (changes at once) | 60 |
+| | NVIDIA Reflex | Off, On, On + Boost (shown only on NVIDIA GPUs with `VK_NV_low_latency2`) | Off |
+| | AMD Anti-Lag 2 | Off, On (shown only on AMD GPUs with `VK_AMD_anti_lag`) | Off |
+| | Fullscreen | Off, On (the same as <kbd>F11</kbd>) | Off |
+| | Fullscreen monitor | Auto (current monitor), or a named connected screen. While windowed, chooses the next fullscreen destination; while fullscreen, moves the game. An unavailable choice is retained with a temporary fallback. | Auto (current monitor) |
+| | V-Sync | Auto, On, Off | Auto |
+| | Window scaling filter | Off, Catmull-Rom, Lanczos (shows "Not needed (window = output)" while the window is the Output resolution's size) | Off; a quality preset sets it |
+| | CRT filter | Off, Lottes aperture grille, Lottes consumer TV, Hyllian Fast, zfast CRT (changes at once; Native HDR bypasses it) | Off |
+| | CRT lines | 240, 480, 720 virtual lines (shown with a CRT filter on; changes at once; capped at half the destination height) | 240 |
+| | Ultrawide menus | Full width; Centred, blurred sides; Centred, black bars (with the Aspect ratio at the monitor's shape) | Centred, blurred sides |
+| | HUD layout | Screen's edges; Middle 16:9 (on a screen that is not 16:9; `HOS_WIDE_UI`, when set, decides) | Screen's edges |
+| | HDR | Off, Expanded, Native (the game's) | Off |
+| | HDR paper white | 80 to 400 nits, in steps of 10 (while HDR is on) | 200 nits |
+| | HDR peak brightness | 400 to 4000 nits, in steps of 100 (while HDR is on) | 1000 nits |
+| | HDR contrast | 50% to 200% around mid grey, in steps of 5 (while HDR is on) | 100% |
+| | HDR tone mapper | Vanilla (the game's curve), PsychoV35 (RenoDX's; with HDR set to Native). Compatible DLSS/DLAA, FSR 4/native AA and shared-chain FSR 3.1 upscaling run automatically; `RX_VK_PSYCHOV35_DLSS=0` disables that compatibility route. Off and the spatial/FXAA TAAU replacement support PsychoV35 directly. FSR 3.1 FG remains separately opt-in and 2x only; legacy own-input FSR upscaling remains unsupported | Vanilla |
+| | Anisotropic filtering | Game's, 2x, 4x, 8x, 16x | 16x |
+| | Shadow resolution | Auto (for the card's memory), Game's (1600), High (2200), Highest (3072): the sun's shadow maps, applies at once | Auto |
+| | GPU device | Auto, or each graphics card by name (after a restart) | Auto |
+| Audio | Volume | 0 to 100%, in steps of 5 | 100% |
+| | Mute in background | Off, On | Off |
+| | Output device | Default or a named Windows playback device; applies live | Default |
+| | Speaker layout | Auto, Stereo, 5.1, Mono (layout changes after a restart; Mono/Stereo live on stereo output) | Auto |
+| | Microphone | Off, Default, or each microphone by name | Default |
+| | Microphone gain | Software input level, 0–400%; applies to new samples without changing system volume | 100% |
+| | Test microphone | Start/stop capture; live levels appear in the help box for Test microphone and Microphone gain | Stopped |
+| Gameplay | FPS counter | Off, FPS, Frame time, Graph, Breakdown, Dev | Off |
+| | FPS counter position | Top right, Top left, Bottom right, Bottom left | Top right |
+| | FPS counter size | Auto, Small, Medium, Large | Auto |
+| | FPS counter details | Opens the FPS counter details page: Version and hardware at every level (Off, On; Off), then a line each of the Dev level (VRAM, Textures, Draws, Dispatches, Render passes, Draws skipped, Texture uploads, Pipelines built, GPU slot waits, Queue submits, Write-backs) and the CPU and GPU lines (Off, On; On) | Version and hardware off, every line on |
+| | Menu size | Small, Medium, Large | Medium |
+| | Game speed | Per frame, Real time | Real time |
+| | Field of view | 50% to 150%, in steps of 5; applies immediately during gameplay | 100% (original) |
+| | Text speed | Normal, 2x, 4x, Instant | Normal |
+| | Text size | Original, 110%, 125%, 150%, 175% (dialogue, Navi and signs) | Original |
+| | Skip title screen | Off, On (after a restart) | Off |
+| | Game language | The game's 16 languages, each by its own name (after a restart) | `language.txt`'s, else English (US) |
+| | Menu language | Auto (the game's language), or English, Português (Brasil), Español (Latinoamérica), Español (España), Français, Deutsch, Italiano, Nederlands, Polski, Русский, 日本語, 한국어, 简体中文, 繁體中文 | Auto |
+| | Discord status | Off, On ("Playing Longshot" and the time played in your Discord status, while Discord runs on this PC) | On |
+| | Skip opening | Off, On (skips the new-game opening: the story movie and Navi waking Link; later cutscenes and the title screen stay) | Off |
+| | Bug report | Saves a report into a new folder in `bug-reports` (below) | |
+| Controls | Controller in background | Off, On | Off |
+| | Mouse camera | As the stick, Native, Off | As the stick |
+| | Disable camera centering | Off, On | Off |
+| | Mouse sensitivity | 0.10 to 5.00, in steps of 0.10 | 1.00 |
+| | Invert mouse vertical | Off, On | Off |
+| | Invert mouse horizontal | Off, On | Off |
+| | Invert camera X | Off, On | Off |
+| | Invert camera Y | Off, On | Off |
+| | Camera speed | 50% to 400%, in steps of 25 | 100% |
+| | Stick dead zone | Default (24%), 5%, 10%, 15%, 20%, 30% | Default (24%) |
+| | Rumble strength | Off, 25% to 150%, in steps of 25 | 100% |
+| | Layout preset | Nintendo (Def), Xbox / PC, Swap Face, Switch 2 Pro; Custom once you bind a button yourself (on the Controls page) | Nintendo (Def) |
+| | Button prompts | Auto, Switch, Xbox, PlayStation 4, PlayStation 5, Steam Deck, Keyboard (on the Controls page; changes at once where the game allows it, else after a restart) | Auto |
+| | Motion | Opens the Motion page: Motion controls (Off, On; On), Motion sensitivity X (10% to 600%) and Y (10% to 300%, in steps of 10; 100%), Invert motion X and Y (Off, On; Off), Motion deadzone (Low, Standard, High; Standard) | |
+| | Walk mode | Hold, Toggle | Hold |
+| | Walk speed | 15% to 90%, in steps of 5 | 45% |
+| | Controls | Opens the Controls page | |
+| | Menu shortcut | Insert or F1; F1 only; Insert, F1 or Esc | Insert, F1 or Esc |
+| | Controller menu button | None, Home, Back left (GL), Back right (GR) | Home |
+| | Compact menu key | Right Shift, Right Ctrl | Right Shift |
+| NFC | NFC tag | The tag files of your NFC folder, by their names | The first |
+| | Tap tag | Holds the chosen tag to the game's reader | |
+| | Remove tag | Takes it off the reader | |
+| | Scan tag on controller | Reads a tag you own with a Switch 2 Pro Controller (USB) and saves it in your NFC folder | |
+| Debug | Debug tools | Off, On (while on, the tools below it: Heart protection, No-clip flight, Mark position, Return to mark, Set time, Inventory item, Change quantity, Free camera, Teleport, Switch age, Inventory, Movement speed) | Off |
+| | Autosave: | On or Off, available with Debug tools off. Enabling Debug tools switches Autosave to Off. Off skips supported autosaves, including the verified map transitions. You can still save manually. | On |
+| | Player: Damage taken | Half, Normal, Double, Quadruple (live, while Debug tools is on; Half rounds damage up to a quarter heart; Heart protection wins) | Normal |
+| | Developer: Save my pipeline list | Saves a zip of the pipelines your play built into Downloads ([below](#send-your-pipeline-list)) | |
+| | Developer: Frame pacing | Off, On | Off; a quality preset turns it on |
+| | Developer: Threaded rendering | Auto, On, Off (after a restart). Auto is On with 6 or more processor cores for the game, and the render thread alone with 4 or 5 | Auto |
+| | Developer: Descriptor reuse | Off, On (changes at once) | On |
+| | Developer: Sampler cache | Off, On (changes at once) | Off |
+| | Developer: Robust buffers | Auto, Off, On (after a restart) | Auto |
+| | Developer: ASTC as RGBA8 | Off, On (after a restart) | Off |
+| | Developer: Intel shader compiles | Auto, Side by side, One at a time (after a restart; Intel graphics on Windows only) | Auto |
+
+- **Quality preset** sets Render resolution, Window scaling filter, Sharpness, Frame pacing, Game speed, Profile and
+  Shadow resolution (back to Auto) for a card with that much memory; how much video memory the textures use comes from the card itself.
+  It leaves the Upscaler and Frame generation as you chose them: with DLSS, FSR 3.1 or FSR 4, the preset's resolution
+  becomes their nearest mode. Changing most other rows yourself sets it back to Custom.
+- **Auto (this PC)**, which a first start begins on, chooses for the PC it runs on: the memory tier from the card's
+  video memory (an integrated GPU, a Steam Deck or a card without mesh shaders at Minimum), DLSS on an NVIDIA RTX card
+  or FSR 4 on an AMD RX 9000 where the build has them (else the game's own upscaler). It leaves the Output resolution as
+  it is: on a first start the game's own 2560x1440, or the screen's size where that is smaller. In the first minute of play it then measures the GPU: while
+  frames are missed with the GPU over 90% busy it lowers the Render resolution a step, and while the frame rate cap holds
+  with the GPU under half busy it raises it a step, up to the best mode that still upscales (DLSS or FSR Quality, or 100%
+  with the game's own; never DLAA or native AA). At most two steps; a PC that holds its cap keeps its picture. It chooses again when the card or the screen changes. `longshot_log.txt`'s
+  `Auto (this PC)` lines say what it chose and why.
+- **Menu size** is how large the menu, the FPS counter and the start-up screen are drawn: Medium unless you choose Small
+  (a desk) or Large (a TV across the room). It stays the same whether you use a controller or the keyboard and mouse.
+- **Field of view** changes the gameplay camera's vertical angle: 100% keeps the game's view, higher shows more of the
+  world and lower brings it closer. The game's zoom changes remain relative to your choice.
+  Aiming has been tested in the 50% to 150% range, including with ultrawide enabled.
+  Cutscenes, the HUD and movies keep their own view. The setting is saved as `field_of_view` in `longshot_options.ini`.
+- **Skip title screen** starts the game with your most recent save: Longshot presses A through the title screen and its
+  file list as soon as the game has a save. Until you have saved once, it leaves the title screen alone, so a new game can
+  still be started. It applies after a restart; turn it off to watch the intro and use the title.
+- **GPU device** matters on a PC with more than one graphics card (a laptop's integrated and dedicated GPUs, or a
+  second card for Lossless Scaling). Auto prefers a dedicated one, and only cards with Vulkan 1.3 are listed. The card
+  you choose is saved as that card (`gpu_device_id=` in `longshot_options.ini`), not its place in the list, so it stays
+  chosen when the list's order changes (a driver update, a card added, an update into a new folder). A chosen card that
+  is not there (an eGPU unplugged) is Auto until it is back. `longshot_log.txt` lists every card as `vk: device <n>`;
+  `RX_VK_DEVICE=<n>` chooses one for a single run and wins over the menu.
+- **Frame generation** makes extra frames between the game's own. It adds a little input delay, and fast motion can
+  show artifacts. **Frame generation by** chooses who makes them: **DLSS FG**, NVIDIA DLSS Frame Generation where it
+  runs (RTX 40 and newer, at 2x up to what NVIDIA's runtime makes on the GPU: 6x on an RTX 50, 2x on an RTX 40; the
+  Frame generation row stops there, and a higher value saved before shows and runs as that top. AMD FSR 3.1 makes the
+  frames it does not, such as Frame generation's Auto), and the default there; **FSR 3.1 FG**, AMD FSR 3.1's frame interpolation (any GPU it runs on, at every multiplier and at Auto,
+  from the scene's depth and motion; below), the default everywhere else; **Built-in FG**, the renderer's own. **Frame pacing** shows frames at an even interval: less stutter, up to one frame of delay. It paces
+  the frames that frame generation shows, so it has no effect while Frame generation is Off. A fixed multiplier shows each
+  frame at its own time on the game's timeline whether Frame pacing is On or Off (with V-Sync On one a refresh at most;
+  where the window's swapchain holds all of a set's frames at once: up to 6x on an NVIDIA card). For the most even of those
+  frames, turn on **Present queue** on the Debug tab (or put `RX_VK_PRESENT_QUEUE=1` in `longshot_env.txt`) and restart:
+  the presents then get a queue of their own, and no made frame waits there behind the game's next frame. It is off by
+  default: on some cards it loses the GPU with frame generation on (an RTX 5080 on NVIDIA's 621.24; an RTX 4090 had a
+  black screen, Hookshot issue 1161, before the fork). If the game crashes or the screen goes black with it and you
+  cannot reach the menu, put `RX_VK_PRESENT_QUEUE=0` in `longshot_env.txt` (it overrides the row), then turn the row
+  off and take the line out.
+- **Game frame rate cap** limits the frames the game renders. With a cap of 60 and Frame generation at 2x, the output
+  can reach 120 FPS. Choose **Auto** in Frame generation to target the display's refresh rate instead of a fixed multiplier.
+  A cap **past 60 is experimental**: the game keeps real time, but some cutscenes and bosses still count frames and can
+  misbehave (the intro's narration running ahead: #1742). 60 is the safe choice.
+  Gohma's ceiling-positioning fault is fixed, tested in complete fights at about 98-99 FPS and at 60.
+  The frozen Zoras under the ice in Zora's Domain stand as still above 60 as at 60 (they twitched: #988).
+  Scarecrow's Song keeps the timing of its eight-note recording and playback above 60. Saved songs are not retimed;
+  re-record a song after updating if its recorded rhythm was lost.
+  Epona jumps fences above 60 as she does at 60 (she had galloped through them, more often the higher the cap).
+  The Shadow Temple's barge carries Link and the enemies on it above 60 as at 60 (above 100 FPS they slid to its back).
+  After you play a song, its notes show one at a time with its melody above 60, as at 60.
+  **Uncapped** renders as fast as the PC can (the game still keeps real time). A display that waits for its refresh still
+  holds the frames to its refresh rate: V-Sync on, or the driver's FIFO mode. `HOS_FPS_MAX=30` or `HOS_FPS_MAX=<61-1000>` sets a cap for one
+  run.
+  The 30 FPS cap uses host pacing and real-time stepping, including when Game speed is Per frame. It is saved as `frame_rate_cap=-1`; existing cap values 0–6 keep their meanings.
+- **Bug report** writes a folder `bug-reports/<date>_<time>` in the game folder with what an issue needs: `report.txt`,
+  which answers the [game problem form](https://github.com/NotRexed/Hookshot/issues/new?template=1-game-problem.yml)'s
+  questions under its own headings (the version, the map you are in, your graphics card and driver, CPU, RAM and
+  system, the menu options and the `RX_`/`HOS_` switches you changed) and ends with a link that opens the form with them
+  filled in (the switches by name only); `longshot_log.txt` (this run's log so far) and `longshot_log.1.txt` (the run
+  before's, which has the crash if the game crashed last time); and `picture.png`, the game's picture without the menu.
+  Settings whose defaults depend on the display, upscaler, Auto preset or other run-time context are listed after the
+  changes, in the same answer, under a **Depends on this PC** line, with their current value and “default depends on this
+  PC”. They are not counted as changed settings; the report does not invent a default from a run-time list index. The rows
+  a preset sets keep their fixed defaults on Custom while Auto (this PC) has never chosen for the options file; with a
+  preset, or once Auto has chosen, they depend on this PC.
+  Fixed defaults, including GPU Auto, the system-default microphone and Frame generation by's DLSS FG, still report actual
+  changes (Frame generation by where DLSS FG cannot run: FSR 3.1 FG); the Aspect ratio's default is
+  the monitor's shape, and the Game language's `language.txt`'s.
+  Your home folder is written `~` (`%USERPROFILE%` on Windows) and your user name `<user>` in the logs' paths. A switch's
+  value is written only when it is a number, a size or on/off, and never for a name with `TOKEN`, `KEY`, `ROOM`,
+  `SECRET`, `PASS`, `SERVER` or `USER` in it; other values read `(value left out)`. Nothing else goes in (no saves, no
+  game files, not `longshot_options.ini` or `longshot_env.txt` themselves), and nothing is sent: open the form, write
+  what happened, and drag the folder's files into it (from File Explorer on Windows, a file manager on Linux; on a Steam
+  Deck, in Desktop Mode). The row then shows the folder's name. A game that stops before its menu can be used leaves its
+  log as `longshot_log.1.txt`: start it again, or attach that file yourself.
+- **The scaling rows**, in the picture's order: **Output resolution** is the size of the game's whole frame, HUD
+  included. The **Upscaler** fills it from the 3D: the game's own network, NVIDIA DLSS or DLAA (the 3D at full size,
+  edges smoothed), AMD FSR 3.1, or AMD FSR 4 or its Native AA (below). DLSS and DLAA look softer than the game's own: set
+  **Sharpness** to around 80% with them. **Off** is no upscaler at all: the game's own network is left out too, and the 3D
+  is stretched to the output with a plain linear filter (the fastest choice, below). **DLSS model**
+  chooses their network (below). **Render
+  resolution** is the 3D's share of the output. The **Window scaling filter** then scales the frame to your window,
+  and **Sharpness** sharpens it, by the picture's pixels: when the window is much larger than the picture (the Handheld
+  Profile's 1536x864 on a 4K screen), a Sharpness kept from an older version is stronger than it was, so a lower one may
+  suit.
+  Changing the Upscaler keeps your chosen render scale, including across a restart. An engine without that scale
+  temporarily uses and shows its nearest supported size: DLSS Balanced (58%) shows 50% with the game's own, then 58%
+  again on returning to DLSS. Changing Render resolution or choosing a Quality preset replaces that saved scale.
+- **Aspect ratio** and **Output resolution:** the menu lists the resolutions your screen offers (its display modes, as
+  Windows lists them, DSR's included), with the common sizes of each of those shapes your screen does not list (1440p, 4K
+  and 5K at 16:9, 1920x1200 and 2560x1600 at 16:10, 3440x1440 at 21:9, ...), grouped by shape. **Aspect ratio** lists
+  the shapes, your monitor's own marked "(monitor's)" (the default: 21:9 on an ultrawide, 16:10 on a 16:10 screen);
+  **Output resolution** then lists that shape's sizes, your screen's own marked "(native)". A size larger than your
+  screen is drawn at that size and scaled down to the window. The marks are for the monitor the game's window is on, and
+  follow it: moved to another monitor, or the desktop's resolution changed while playing, the menu adds that screen's
+  sizes. On Linux the screen's size comes from SDL (the primary display). A portrait screen has no shape the game can
+  draw, so the row shows Monitor's shape as a value of its own there. Docked only. A shape other than 16:9 widens the cameras (21:9, 32:9) or narrows the
+  picture (16:10, 4:3, 5:4); the HUD keeps its 16:9 size with its corners at the screen's edges (**HUD layout**: or in
+  the middle 16:9, as before), and movies stay in the middle 16:9. At 16:9 on a 5120x1440 (32:9) monitor, the
+  game's 16:9 picture is stretched across the 32:9 output, sharp but wide. Options saved by an older version at 16:9,
+  the default then, move to Monitor's shape on a screen narrower than 16:9 (16:10 such as the Steam Deck's, or 4:3),
+  where 16:9 only adds bars above and below; an ultrawide keeps its 16:9. The output's rows below show the sizes for the
+  output you chose. At your screen's own size the HUD and text map pixel for pixel. Above 2560x1440 the game's render
+  targets get a bigger GPU pool, so a full-size 3D fits. Where the screen's modes are not known (Linux), the menu offers
+  1920x1080, 2560x1440, 3840x2160, 5120x1440 and 5120x2880. For a size the menu does not offer, type it in
+  **Custom output size** (Enter or the pad's confirm button to edit and set it, Esc or the back button to cancel).
+  On a controller, D-pad Left/Right moves the caret, Up/Down cycles its digit or separator, the right shoulder inserts
+  a digit and the left shoulder removes a character. At the end, Up/Down adds a character. The shown Paste button
+  still pastes; with a keyboard, Ctrl+V or Shift+Insert does the same. Full-width digits and `ｘ` become ASCII.
+  Or set `output_res=<width>x<height>` in `longshot_options.ini`: each side a multiple of 8, at least 640x360,
+  at most 5120x2880's pixels, and between 5:4 and 48:9 in shape. The menu says why it refuses a size; in the file,
+  anything else uses the game's reduced 2048x1152. The Output resolution row chooses the typed size from its list when it is
+  already there, including sizes found after a monitor change, or offers it as your own choice and selects its shape.
+  Typing a 16:9 size keeps Aspect ratio on the monitor's shape when it already follows the monitor.
+  The size this run started with stays available until the next start, so returning to the starting shape still
+  restores that size even after a custom-size edit.
+  A picture wider or narrower than 16:9 is kept to 5120x2160's pixels, so above that a size of another shape is
+  not a native frame. A size's own shape sets the camera's, even when the OS reports a single 16:9 primary monitor. For
+  three 16:9 monitors, use `5760x1080` or `7680x1440` and a window or logical display
+  that spans all three. Both render at full size: 7680x1440 has 5120x2160's pixels, the most a wide picture takes.
+  For one run, set `HOS_OUTPUT_RES` to a size, such as `HOS_OUTPUT_RES=3840x2160`.
+- **Window scaling filter** matters only when your window's size differs from the Output resolution: for the sharpest
+  picture, set the Output resolution to your screen's, and the row shows "Not needed (window = output)". It and
+  **Sharpness** also work when Frame generation is Off.
+- **CRT filter** adds scanlines and a phosphor mask to the finished SDR picture, including the game's HUD, after
+  window scaling and sharpening. Longshot's menu and overlays stay clean. Lottes aperture grille is a flat PVM-style
+  look, not a calibrated Sony model; Lottes consumer TV adds curved glass, a shadow mask and beam bloom. Hyllian Fast
+  uses cubic reconstruction and a magenta/green mask; zfast CRT has softer scanlines and a monochrome aperture mask.
+  **CRT lines** chooses a virtual raster, independent of Render resolution: 240, 480 or 720 lines, capped at half the
+  destination height (at least one line), with width following its aspect. Exact integer multiples give the most regular
+  lines; non-integer scaling can cause moire. Neither option forces 4:3 or integer scaling. Both apply at once and
+  quality presets, including Auto, preserve them. Expanded HDR expands the filtered SDR picture; Native HDR (PQ)
+  bypasses CRT and keeps the choice for SDR. **Off**, the default, adds no CRT passes or GPU images.
+- **Anisotropic filtering** keeps textures sharp on surfaces seen at a slant: the paths and floors ahead of Link. The game
+  asks for 1x or 2x, which at a PC's resolutions smears the ground a few metres off; 16x costs little on most cards, and
+  Game's is the console's own. `RX_VK_ANISO=<n>` sets it for one run (0: the game's). It is for the game's textures:
+  a picture the game drew itself and reads back (one level, no mipmaps) keeps the game's own anisotropy.
+- **Shadow resolution** sets the size of the sun's shadow maps. The game draws them 1600 pixels a side, which at a PC's
+  resolutions turns the shadows of thin things near Link (the drawbridge's chains, fences, ivy) into stair steps. High
+  (2200) and Highest (3072) are the game's own larger sizes, from its own table: by their size, Highest takes about
+  113 MB of video memory against the game's 31 MB, and on an RTX 4090 0.05 to 0.07 ms more GPU time a frame. Auto, the
+  default, picks by the card's memory, the Quality preset's tier or else the one Auto (this PC) chose: the game's size on
+  Minimum and Low (4 and 6 GB), High on Balanced (8 GB), Highest from High (12 GB) up. Choosing a preset puts the row back
+  on Auto. It applies at once and is saved as `shadow_resolution`.
+- **Upscaler Off** (`dlss=6` in `longshot_options.ini`) is for slow GPUs and for measuring: no DLSS, no FSR, and not the
+  game's own network either, which otherwise runs on every frame (at the game's usual 3/4 share it scales the 3D up and
+  smooths its edges; at 100% a pass of the same kind still smooths them). In its place the 3D is stretched to the output
+  with a linear filter, and the HUD is drawn over it at the output's size as always. Nothing is kept from frame to frame, so
+  there is no ghosting, but no anti-aliasing either: edges are jagged, and below 100% the picture is soft. The Render
+  resolution then sets the 3D's size alone (Auto, 100%, 75%, 67%, 50%, 33%): lower is faster. RX_VK_DLSS, RX_VK_FSR4 and
+  RX_VK_FSR set for a run go over it, as over the row's other choices.
+- **Texture detail with DLSS, FSR 3.1 or FSR 4:** DLSS and DLAA sample the world's textures as NVIDIA's DLSS guide asks:
+  at the output's size and one mip step finer (the game's own bias + log2(3D / output) - 1), which DLSS resolves over its
+  frames, so they keep the detail of the full-size picture instead of the 3D's smaller size. FSR 3.1 and FSR 4 sample them
+  one finer mip step for each halving of the 3D below 75% (the game already does so for its own 75%).
+  `RX_VK_UPSCALE_LOD_BIAS=0` turns it off; `RX_VK_DLSS_LOD_OFFSET=<steps>` sets DLSS's extra step for a run (-1 by default,
+  0 for none, down to -3).
+- **NVIDIA Reflex** Off is the game as without it. `RX_VK_REFLEX_LOG=1` logs the driver's latency timings every 300
+  frames while it is on.
+- **AMD Anti-Lag 2** Off is the game as without it. It works with Frame generation too: each game frame's present
+  stage is given when that frame itself is shown, not at the made frames before it.
+- **Profile** runs the game as the console docked (at the Output resolution) or Handheld (1536x864): lighter on the GPU.
+- **Mesh shaders** (how the game's mesh programs, much of the scenery, run) is no longer a menu row: changing it made
+  the next start translate every shader again. The game uses the GPU's own mesh shaders where it has them, and the
+  compute path where it has not and on Linux AMD cards (issue 2245). For troubleshooting, `RX_VK_MESH_SHADERS=compute`
+  in `longshot_env.txt` uses the compute path on every GPU (try it if your card crashes or leaves objects out; usually a
+  little slower), and `RX_VK_MESH_SHADERS=native` the GPU's own for every draw. A `mesh_shaders=` line left in
+  `longshot_options.ini` is no longer read.
+- **Ultrawide menus:** with the Aspect ratio at the monitor's shape, the pause, item and map menus stay in the middle
+  16:9, with what the game draws beside them out of focus, or black; Full width stretches them over the whole screen,
+  as before. Loading screens and pre-rendered movies get the same sides. It changes at once.
+- **V-Sync:** Auto is mailbox where the driver has it (no tearing, no wait for the display); otherwise On, or on Windows
+  Off. On waits for each refresh (FIFO): no tearing, at most the display's rate. Off shows each frame at once and can
+  tear (where the driver cannot, it is Auto). It changes at once. `RX_VK_FIFO=1` (On) or `RX_VK_IMMEDIATE=1` (Off) chooses
+  for one run.
+- **Threaded rendering:** On draws the picture on threads of its own (a render thread and a recorder thread) while
+  the game goes on to its next frame, for a higher frame rate on a processor with threads to spare; it is still being
+  tested and can show flashes. Off draws it on the game's own thread, as before. Auto chooses by the processor's cores
+  for the game, each core counted once however many threads it runs: On with 6 or more, the render thread alone with 4
+  or 5 (where the recorder thread beside it was slower), Off with fewer, and Off wherever the mode is not safe. It
+  applies after a restart. `RX_VK_ASYNC` and `RX_VK_RECORDER`, when set, choose for
+  one run.
+- **Robust buffers** (Debug tab, Developer): a read past a buffer's end is dropped instead of stopping the GPU. Auto is
+  on, on every card; Off can be faster on some NVIDIA cards.
+- **ASTC as RGBA8** (Debug tab, Developer): the AMD texture workaround below.
+- **Present queue** (Debug tab, Developer): the presents on a GPU queue of their own. Off by default; On makes frame
+  generation's frames more even with V-Sync Off on some cards (an RTX 5090), but lost the GPU on others with frame
+  generation on (an RTX 5080). It applies after a restart; `RX_VK_PRESENT_QUEUE` in `longshot_env.txt` or the environment
+  chooses over it at every start while it is set (the row then shows it and cannot be changed).
+- **Intel shader compiles** (Debug tab, Developer; Intel graphics on Windows only): One at a time lets one thread at a
+  time into Intel's shader compiler; Side by side is faster on many cores but can crash in the driver. Auto, the default,
+  is side by side on the Arc B-series with driver 101.9154 or newer, where it was measured, and one at a time elsewhere. See
+  [Intel laptops](#intel-laptops). It applies after a restart.
+- **Game speed:** with Per frame, the game runs slower whenever it is below 60 fps. Real time keeps it at normal speed
+  down to 15 fps.
+- **FPS counter** shows in a corner (**FPS counter position**; at the top right while the menu is open), as large as
+  **FPS counter size** says (Auto grows with the window, as the menu does; Small, Medium and Large keep the size Auto has
+  in a 720p, 1080p and 1440p window, whatever the window), at one of
+  five levels. **FPS** is the number alone (an options file's old On); with frame generation on, it also shows the
+  game's own rate and who makes the frames: `Base 60, DLSS FG` (NVIDIA DLSS Frame Generation), `FSR 3.1 FG` or `Built-in FG`. **Frame time** adds the game's frame time and its 1% low (the mean time of the slowest 1% of frames
+  over the last 10 seconds). From this level on, the number and the frame time are green at the Game frame rate cap's rate,
+  amber under it and red under two thirds of it. (The cap's rate is the display's refresh instead with V-Sync On when
+  that is slower; with Uncapped and V-Sync not On there is no line, and the colours are against 60.) **Graph** adds
+  the frame times of the last 4 seconds (each point the slowest frame of its span, so no stutter is missed), with a
+  dashed line at the Game frame rate cap's frame time and a red mark over frames that took more than twice it; its
+  scale follows the usual frame, so a spike is drawn at the top rather than flattening the rest. **Breakdown** draws
+  each of the graph's frames as the parts its time went to, stacked, with their values under the graph; the values add up
+  to the frame time: the game's own code (Game), the renderer's part on the game's thread (Renderer: handing
+  over the frame's work, or all of its recording with Threaded rendering off), then the waits under
+  Waiting on: with Threaded rendering, for the game's main thread to finish writing the frame (Game's main thread), for
+  the render thread (Render thread: work it had not recorded yet, or the frame before it had not replayed), for the GPU to
+  finish work the game waits on (GPU fence) and for the GPU at the present (GPU present), and last the frame's turn (Pacing: the frame rate cap,
+  vsync, Reflex). The colours keep one meaning: blue the game's work, red the GPU, purple the render thread, grey pacing
+  and idle. With Threaded rendering on, a second lane under the graph shows the render thread's own frame in parallel,
+  on the same scale: recording, waiting for the parallel replay's workers and for a GPU slot, and idle. Then the GPU's
+  own time per frame and its share of the frame (it runs in parallel too), and the shaders built and draws left out in
+  the last 4 seconds (red marks on the graph where they happened, the usual cause of a stutter). **Dev** adds the
+  renderer's own numbers, for debugging and bug reports: video memory used of what the driver allows (red past it), the
+  textures held and their memory, draws, dispatches and render passes a frame, draws skipped a frame (red when any),
+  texture uploads a second, the pipelines built since the start, and the renderer's pressure a frame: its waits for a
+  recording slot (the GPU behind), its queue submits (the driver's and the kernel's time) and the GPU's results written
+  back to the game's memory (VRAM on a line of its own, the rest two to a line while they fit, else on a line of
+  their own); at the counter's foot four lines: the
+  version (as the menu's banner shows it), the CPU, the GPU and its driver, at every level too with **FPS counter details**'
+  Version and hardware at every level. The details page turns each of the Dev level's lines on or off.
+- **Volume** scales the game's whole sound, on top of the game's own sound settings and Windows' volume. Its steps
+  follow a curve so they sound about even: 50% is a quarter of the level (-12 dB). **Mute in background** silences the
+  game while another window has the focus; an overlay such as Steam's or Discord's does not count as another window
+  while the game was in front.
+- **Output device**, under Audio, selects a playback endpoint, with Default following
+  the system output. Changes briefly restart the audio stream. A missing endpoint falls back to Default and is retried;
+  its saved choice is retained. `HOS_AUDIO_DEVICE` overrides selection for that run without changing the saved choice.
+  Windows saves the endpoint's persistent ID. Linux uses the loaded SDL2/SDL3 backend and device name, resolved again
+  when opening playback; device numbers are not saved. A renamed device is treated as missing. Identically named
+  Linux outputs are ambiguous and are not offered; use Default and the system mixer to route those.
+- **Speaker layout** is the speakers the game mixes its sound for. Auto is 5.1 when the selected/default output device has 5.1
+  or more speakers, else stereo; Stereo or 5.1 chooses one whatever the device has (5.1 on stereo speakers is mixed
+  down). Auto counts the speakers Windows names, not the channels: an audio interface whose outputs are not set up as
+  surround speakers (a Focusrite Scarlett's 8 outputs, for one) is stereo, so voices and the ocarina do not go to an
+  output with nothing connected. Mono averages the stereo channels into both ears, for one-sided hearing or one earbud. Mono/Stereo
+  changes apply live while output is stereo; changing the channel layout (from or to 5.1) needs a restart.
+  Auto never applies the mono average. Saved `audio_output` values remain 0 Auto, 1 Stereo, 2 5.1; Mono is 3.
+  For one run, `HOS_AUDIO_CHANNELS=2` or `6` chooses the channel layout over the menu (6 leaves Mono inactive).
+- **Microphone**, also under Audio, is what the ocarina hears when the game's own microphone option is on (an instrument, or humming).
+  Default follows Windows' default recording device; the list shows up to 64 recording devices by name, and a change
+  applies at once. Physical and virtual inputs share that limit; devices after the first 64 reported by the audio backend
+  are not listed. A chosen microphone that is unplugged stays chosen (shown as not connected): Default stands in until it is
+  back. On Linux (SDL2) two microphones with the same name cannot be told apart: the first is used. Windows must allow desktop apps to use the microphone
+  (Settings, Privacy & security, Microphone). `HOS_MIC_LOG=1` logs what the game reads, a line a second.
+- **Microphone gain** changes captured samples for Longshot only, from 0% to 400% (100% unchanged); it does not change
+  the system's input volume. Boosting raises noise too, and excessive levels clip. It applies to newly captured samples;
+  samples already buffered for the game keep their previous gain.
+- **Test microphone** starts/stops capture explicitly. During a test, the help box for Test microphone and Microphone gain
+  shows a read-only bar labeled Testing, with the incoming percentage before gain and adjusted percentage after gain.
+  The same explanation and percentage bullets appear on both rows. The meter reports
+  clipping, a default-device fallback, unavailable capture, or no recent samples. Opening Audio alone never starts a test;
+  Microphone Off prevents one. Leaving Audio, closing the overlay or losing focus stops it at the next menu tick.
+  The test shares the game's 48 kHz mono capture when active; stopping a test leaves capture needed by the game running.
+  No microphone sound is played back or saved. Test-only samples are drained before a first game stream joins.
+- **Game language** is the game's own text, `language.txt` in the game folder: the row writes it once you leave the row,
+  and the game reads it at its next start (`HOS_LANGUAGE`, when set, wins over the file, as for the game). Where the
+  folder cannot be written the row goes back to the file's language. **Menu language** is this menu's: Auto follows the
+  language the game runs in until the restart (English (UK) and French (Canada) take English and French). The
+  translations are machine-made and want checking by speakers of each language: each is
+  one line in `gpu/vk/menu_i18n.h`. Place and item names stay English for now. Japanese, Chinese and Korean letters come
+  from the game's own fonts for them, with Windows' (Yu Gothic, Microsoft YaHei, Microsoft JhengHei, Malgun Gothic) or
+  Linux's Noto CJK where a game font lacks one.
+- **Discord status** shows "Playing Longshot" in bold, and under it where Link is and his age while you play
+  (Kakariko Village - Adult, Inside the Deku Tree - Child, Fighting Queen Gohma - Child) with his hearts, Gold Skulltula
+  tokens and the pieces of heart he has found below that (❤️ 2.75/3 · 🕷️ 12 · 💗 5), or the version (v3.0.0 RC7) until he is in a map, and the
+  time played; the version is also the picture's hover text. It is on by default and does nothing unless a Discord client is running on this PC; with the row Off nothing is sent to it. What it says is yours to change in
+  `longshot_options.ini` (the menu keeps these lines):
+
+  | Line | What it sets | Default |
+  |---|---|---|
+  | `discord_text=` | the status's two lines | `{location\|{location} - {age}{break}{hearts\|❤️ {hearts}/{max_hearts} · }{skulltulas\|🕷️ {skulltulas} · }{heart_pieces\|💗 {heart_pieces}}}{!location\|{version} {build}{!version\| {commit}}}` |
+  | `discord_image=` | the large picture: an art asset's name in the Discord application, or an `https://` link to a picture | `longshot` |
+  | `discord_image_text=` | the picture's text, shown on hover | `Longshot {version} {build}{!version\| {commit}}` |
+  | `discord_app_id=` | the Discord application: the bold name ("Playing Longshot") and its art; Discord shows no other name there | Longshot's |
+
+  In the status, `{location}` is where Link is, `{age}` Child or Adult, `{map}` the game's own name for the map,
+  `{hearts}` and `{max_hearts}` his hearts (quarters as .25 .5 .75), `{rupees}` his rupees, `{skulltulas}` his Gold Skulltula
+  tokens and `{heart_pieces}` the pieces of heart he has found (all of them, not only the 0 to 3 he holds: worked out from his hearts and the boss heart containers he has taken): all empty on the title screen. Emoji work as they are. Longshot's version comes in parts: `{version}` the release (v3.0.0), `{build}` a
+  release candidate or nightly made readable (RC7, N486; nothing on a release), `{commit}` the commits since it and
+  their hash (25-g7a029028; the defaults show it only on a nightly, N486 09a20cd6, which has no version number) and `{release}` all of it as the menu shows it (v3.0.0-rc.7-25-g7a029028). `{break}` ends the
+  first line: what follows is the smaller second line. `{location|...}` shows what is inside only when there is a
+  location (any of the names works: `{commit| [{commit}]}`), `{!location|...}` only when there is none, and these
+  nest. A part that is empty also takes its brackets
+  and extra space with it, so `Longshot {version} {build} [{commit}]` reads "Longshot v3.0.0 RC7 [25-g7a029028]" on a test
+  build and "Longshot v3.0.0" on a release. Write a brace as `{{`. For example:
+  - `discord_text={location|{location}{break}}{version} {build} {commit}`: the place without the age or the stats, and
+    the version with its commit;
+  - `discord_text={location|{location} - {age}}`: the place and the age only, nothing on the title screen;
+  - `discord_text=`: no text, the picture and the time played only.
+- **Send performance statistics** (a tick on the launcher's page, off by default): the game counts how its frames,
+  hitches and movies went on each map, with one-second samples of Link's X/Y/Z position and camera yaw/pitch. The
+  launcher sends five-minute batches to the team at its next start, with the GPU, driver, CPU, OS and renderer but no
+  paths, user name or ID. The relay rounds positions into 100-unit cells and angles into 45-degree yaw and 30-degree
+  pitch bins. It costs a few nanoseconds a frame; unticking it deletes
+  what hasn't been sent. What is in a summary: [performance statistics](docs/performance-statistics.md).
+- **Controller in background:** On keeps the controller working while another window has the focus. The keyboard and
+  mouse still need the game's window.
+- **Mouse camera:** Native turns the camera with the mouse one to one, as in a PC game. As the stick uses the mouse in
+  place of the right stick. The <kbd>-</kbd> and <kbd>=</kbd> keys change the sensitivity in game too.
+  When another camera takes over, Native leaves it alone; on returning, mouse look starts from the game's current
+  pitch and yaw rather than restoring the old view. Off leaves the mouse out of play: a click in the window doesn't
+  capture it, so it neither turns the camera nor presses buttons. Play with a controller or the keyboard.
+- **Disable camera centering:** On stops the game gradually turning the camera toward your movement, so it does not fight
+  native mouse look. Off keeps the game's standard behavior. Changes apply immediately with either Mouse camera mode.
+  Manual controls, explicit recentering and scripted camera headings still work; automatic pitch adjustment is unchanged.
+- **Camera speed** is how fast the right stick turns the camera, in percent of the game's own speed. The camera keys
+  follow it, and so does the mouse with Mouse camera on As the stick; Native mouse look has its own sensitivity. The
+  game's own camera speed option still picks the speed this multiplies.
+- **Stick dead zone:** how far a stick moves from center in any direction before it counts. Default is about 24%. Use
+  a lower value for a precise stick or a higher one for a stick that drifts. The game also applies its own dead zone.
+- **Rumble strength** scales the controller's rumble: 100% is the game's own, Off turns it off. The game's HD rumble
+  goes to a controller's heavy and light motors by its frequency.
+- **Motion controls** (Controls tab, Motion page): the controller's gyroscope aims where the game uses motion, as on the Switch. It works with
+  Switch Pro controllers and pads in Switch mode, DualSense and DualShock 4 (through SDL). Its row
+  says whether the connected pad has a gyroscope; Off leaves the game seeing a pad lying still. **Motion sensitivity X/Y**
+  scale the left-right and up-down aim (100% is the console's), **Invert motion X/Y** turn either direction around. The game gets the motion
+  state as a Switch (and Eden) builds it, so how you hold the pad when motion starts does not matter. Motion follows the pad used
+  last. The gyroscope's drift is learned while the pad rests on a table, so set it down for a second if the aim
+  creeps. `HOS_MOTION_DEBUG=1` (in `longshot_env.txt`) logs what the game gets twice a second.
+- **Layout preset:** Nintendo has A on the right face button, Xbox / PC and Swap Face put A on the bottom one. Changing
+  a button yourself sets it to Custom.
+- **Button prompts** (on the Controls page): the button icons in the game's texts, hints and menus. Auto shows the first
+  controller's; with no controller connected, the keyboard's. Keyboard shows the key or mouse button your controls put each
+  action on (the first of its two), and your movement keys and the mouse for the sticks; the ocarina's notes and the pause
+  menu's controller keep the Switch's buttons. A prompt for several directions at once shows W A S D while those are the
+  movement keys, and the stick's own icon with other keys.
+- **Save my pipeline list** (Debug tab, under Developer): see [Send your pipeline list](#send-your-pipeline-list).
+- **Walk mode** and **Walk speed:** on the keyboard the movement keys push the stick all the way, so Link runs. While the
+  Walk key is held (<kbd>Caps Lock</kbd> unless you change it on the Controls page), they tilt it only Walk speed of the
+  way, and he walks; with Walk mode on Toggle, one press walks and the next runs again. 15% is his slowest walk, 45% to
+  50% his fastest; from 55% up he jogs, then runs. Controllers, the mouse and the camera keys are not changed. Caps Lock
+  still switches capitals on and off in other programs at each press: bind another key if that bothers you.
+  Walk mode is separate from the Controls page's Toggle column, which holds Switch buttons such as ZL, not Walk.
+  They can be used together without toggling twice. In Toggle mode, walking stays selected across Insert and focus
+  changes, but a Walk key held when play resumes must be released before a fresh press changes that selection.
+
+### Controls
+
+Use a controller, or the keyboard and mouse. On the keyboard, <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> move
+(hold <kbd>Caps Lock</kbd> to walk) and the arrow keys (or <kbd>I</kbd> <kbd>J</kbd> <kbd>K</kbd> <kbd>L</kbd>) turn the
+camera.
+With the default keyboard bindings, press <kbd>E</kbd> to select **New Game** on the title screen.
+
+**Mouse in the game's menus (Windows):** the title screen and its file list, the pause menu, the Key Items, Threads of
+Time and Map pages, the options and the save dialogs free the mouse while they are shown. Point at an entry to select
+it, left-click to choose it (A) and right-click to go back (B); the tabs, the L and R signs and the Back prompt can be
+clicked too. The wheel turns the pause menu's pages and scrolls lists; on the map it changes floors and zooms. Drag
+with the left button to pan the map and the tapestry or turn a stone on Key Items. The cursor stays hidden while you
+play on a controller or the keyboard, until the mouse moves.
+
+**Rumble:** a Nintendo Switch Pro Controller or Joy-Con plays the game's HD rumble as the Switch does, each side and
+both frequency bands as the game asks, with SDL3 (the Windows game brings it; on Linux the system's SDL3, where it has
+one). Other controllers, Switch 2 controllers, a pair of Joy-Cons used as one controller, and SDL2's own library get
+the game's rumble on their two motors. The menu's Rumble strength scales it too. `HOS_HD_RUMBLE=0` sends the Switch
+controllers the motor rumble too. On Linux, SDL talks to the Switch controller itself through its hidraw device, which
+needs read and write access for your user; Steam's udev rules (the `steam-devices` package on most distributions) give
+it. Without them the kernel's hid-nintendo driver runs the controller, and it gets the motor rumble. HD rumble goes to
+anything SDL reports as a Switch Pro Controller or Joy-Con, and that includes third-party controllers in Switch mode
+(8BitDo, GameSir and others; SDL gives them Nintendo's ids). Some of them may turn it into weak rumble or none: set
+`HOS_HD_RUMBLE=0` to give them the plain motor rumble.
+
+**NFC tags:** where the game asks for a figure's NFC tag, the Insert menu's **NFC** tab gives it one. The tags are files
+in a folder of yours, dumps of tags you own: `.bin` (an NTAG215's 540 bytes; 532 and 572 byte ones too) or a Flipper
+Zero's `.nfc`. The folder is `%LOCALAPPDATA%\Longshot\nfc` on Windows and `~/.local/share/longshot/nfc` on Linux
+(`LONGSHOT_NFC_DIR` names another); the Longshot Launcher's NFC page adds and removes them, or copy them in yourself.
+Choose one in the **NFC tag** row and press **Tap tag** while the game waits for one (or before: it stays at the reader
+until the game reads it). With a Nintendo Switch 2 Pro Controller plugged in over USB (Windows), a real tag held on the
+controller is read too, and **Scan tag on controller** saves one into the folder. Only a tag's ID and its figure's model
+are read from a file; what a game writes to a tag is kept beside your saves instead (`user/nfc`), and no tag, real or
+file, is ever written. [docs/nfc.md](docs/nfc.md) has the details.
+
+**The Nintendo Switch 2 Pro Controller over USB (Windows):** Windows has no driver a game can use for it, so the game
+reads it itself: plugged in with its cable, it is a controller with its motion sensor and rumble like any other, with no
+bridge program. Pick **Switch 2 Pro** as the Layout preset (Controls page) for its own buttons and the Switch's icons;
+its Home button opens this menu (**Controller menu button**, which can also be GL or GR, or none). Only one program can
+have the controller: close Steam (it takes it for Steam Input) and any bridge such as Switch2Connect first, or the log
+says another program has it. A controller that stops taking rumble (it happens; the log says so) plays its own buzz and
+click instead until it is unplugged and plugged in again. Not over Bluetooth, where the controller speaks a pairing of
+Nintendo's own. `HOS_SWITCH2=0` leaves the controller alone.
+
+To change which gamepad button or key presses a Switch button, or which keys move, walk and turn the camera, open the
+Controls tab's Controls page. Choose a row and a column (Gamepad or Keyboard), press <kbd>Enter</kbd> (or the bottom
+face button), then the new button or key. <kbd>Esc</kbd> cancels, <kbd>Delete</kbd> clears it, and Reset to defaults
+puts them all back. A gamepad button taken from another Switch button swaps with it. The page saves them in
+`longshot_options.ini`.
+
+**Toggle:** on the Controls page, set a Switch button's Toggle column to On to hold it with one press and release it
+with the next. Both gamepad inputs, bound keys and mouse buttons share the latch. Every Toggle starts Off.
+Plus, Minus, stick directions, Walk and ocarina note rows have no Toggle. Opening Insert, pressing Plus or Minus,
+losing focus, rebinding or Reset to defaults releases latched buttons. With Controller in background On, a new
+press can latch again behind another window. On Linux, any menu screen receiving pane focus also clears the latch,
+not only the pause page. Insert always releases it. There is no separate on-screen latch indicator.
+
+**Ocarina notes:** the page gains five rows, `Ocarina note (L)`, `(R)`, `(A)`, `(Y)`, `(X)`, unset by default: the game's own
+buttons play until you bind a note to a key or gamepad input of your own, and a bound note then answers only that input while
+the game waits for it. A dialogue or cutscene that takes the buttons ends the wait, and a song lesson keeps the game's own too.
+
+<details>
+<summary>Writing the controls in longshot_options.ini yourself</summary>
+
+```ini
+pad_a=0
+key_a=69,13
+toggle_a=0
+```
+
+`pad_<button>` is a gamepad input by position: 0 bottom face button, 1 right, 2 left, 3 top, 4 Select or Back, 5 Home,
+6 Start, 7 and 8 the stick presses, 9 and 10 the shoulder buttons, 11 to 14 the D-pad (up, down, left, right), 15 and
+16 the triggers, -1 none. `key_<button>` is one or two
+[Windows key codes](https://learn.microsoft.com/windows/win32/inputdev/virtual-key-codes) in decimal (69 is
+<kbd>E</kbd>, 13 <kbd>Enter</kbd>), 0 none; the mouse's buttons are 1 (left), 2 (right), 4 (middle), 5 and 6 (side
+buttons), and count while the mouse is captured; the side buttons also in the game's own menus, where the other three
+click. The buttons are `a` `b` `x` `y` `l` `r` `zl` `zr` `plus` `minus` `ls` `rs` `left` `up` `right` `down`, for keys
+only the left stick's and the camera's directions and walking: `move_up` `move_down` `move_left` `move_right` `cam_up`
+`cam_down` `cam_left` `cam_right` `walk`, and the ocarina's five notes,
+which also take a `pad_` line: `note_l` `note_r` `note_a` `note_y` `note_x`. A button the file leaves out keeps
+its default. `toggle_<button>=0|1` sets that button's Toggle (0 Off, the default; 1 On). It accepts the Switch
+buttons above except `plus` and `minus`; stick directions, Walk and note rows do not accept it. Other values mean Off.
+The file saves enabled flags, not held state; a restart starts with no button latched.
+
+</details>
+
 ## Mods
 
 Put mods in a `mods` folder in the game folder, beside `longshot.exe` (or point `HOS_MODS` at another folder), in the
@@ -285,7 +851,8 @@ format, or a zstd frame that does not give its size) is used as it is, with the 
 If a mod includes tables for several game versions, the prompts use the table name from the game's own RomFS,
 not the first table found in the mod. Other versions' tables do not change the prompts' font or its size entries.
 
-For authors: the [existing file contract and game-free example](docs/mods.md) cover discovery, conflicting files,
+Players: the [mods guide](docs/using-mods.md) covers installing, turning off and checking mods. For authors: the
+[existing file contract and game-free example](docs/mods.md) cover discovery, conflicting files,
 disabling and what this loader does not provide. The example contains only invented text, not a seed or game data.
 
 ## Build from source
@@ -405,8 +972,10 @@ cd ~/Games/Longshot
 
 **AMD FSR 3.1** in the Graphics tab's **Upscaler** row (`dlss=3` in `longshot_options.ini`; `RX_VK_FSR=1` for one run,
 `RX_VK_FSR=0` never) upscales in place of the game's own network, and with **Frame generation** at 2x its frame
-interpolation can make the frame in between with `RX_VK_FSR_FG=1` (opt-in: the game draws its HUD into the same picture
-and FSR 3.1 has no HUD-less colour to keep it still, so the HUD smears; by default the renderer's own makes it). Both are AMD's FidelityFX
+interpolation makes the frames between the game's at every Frame generation setting, Auto and 2x to 8x, wherever NVIDIA DLSS
+Frame Generation does not (Frame generation by at FSR 3.1 FG, or at DLSS FG; `RX_VK_FSR_FG=0` never, `=1` over the row). The game draws its HUD
+into the same picture and has no HUD-less colour, so AMD's own passes would move the HUD with the scene: here a pixel the
+same in both frames while the scene behind it moves is kept where it is (`RX_VK_FSR_FG_HUD=0`: AMD's as they were). Both are AMD's FidelityFX
 SDK 1.1.4 shaders (`third_party/fidelityfx-sdk`, MIT), compiled into the renderer: no AMD runtime or DLL is needed, and
 the row offers FSR 3.1 on any Vulkan 1.3 GPU with push descriptors, extended storage image formats and storage writes
 without a format (`vk: fsr3: ... can run on this GPU` in the log). It upscales on the same inputs as DLSS and FSR 4: the
@@ -457,7 +1026,8 @@ license. Never share a game folder built with them, and do not post builds made 
   that folder in `RX_VK_DLSS_DIR`.
 
 The **DLSS model** row chooses DLSS's network, by NVIDIA's preset letter, for every mode: **Transformer (K)**, the
-transformer model and the one tested most here (the default); **Transformer 2 (M)**, NVIDIA's second-generation
+transformer model and the one tested most here (the default; on a card with less than 7 GB of video memory **CNN (E)**
+in its place, NVIDIA's CNN model, for less video memory and GPU time); **Transformer 2 (M)**, NVIDIA's second-generation
 transformer as it picks it for Performance; **Transformer 2 (L)**, the same generation as tuned for Ultra Performance;
 **NVIDIA default**, which lets DLSS's runtime pick for each mode, so it can change with a runtime update. The runtime
 the SDK comes with (310.9.16) has all of them. A change applies at once, without a restart (`dlss_model=` in
@@ -604,7 +1174,11 @@ the settings in the in-game menu.
 On **Minimum (4GB)**, when the driver reports a nonzero VRAM budget of at most 4.5 GiB, or the GPU is integrated
 and the PC has 16 GB of RAM or less (its "VRAM" is that RAM, whatever budget the driver reports), sampled ASTC textures
 use a 1024 dimension limit and an 8 MiB decoded-size threshold for leaving out their top mip levels. This lowers texture
-detail to reduce the working set. Other presets and larger or unknown budgets keep the 2048 / 64 MiB defaults;
+detail to reduce the working set. The same holds on Auto (this PC) at Minimum, and on Custom after either; Custom with
+no preset behind it (chosen on the Quality preset row, or an options file from before `memory_budget` existed) goes by
+what Auto picks for this PC, which is Minimum on every integrated GPU and on cards of 4.5 GB or less. Applying Low or a
+higher preset, or `RX_VK_LOW_VRAM_MIPS=0`, keeps full-size textures there. Other presets and larger or unknown budgets
+keep the 2048 / 64 MiB defaults;
 uncompressed render targets, depth images and the separate `RX_VK_TEX_MAX_MB` allocation limit keep their handling.
 The driver budget is sampled at the first texture creation and kept for the session. It is a heuristic, not a physical
 VRAM measurement: other applications can lower the budget even on a larger card.
@@ -650,8 +1224,9 @@ a time**, the safe choice on a CPU with 4 cores or fewer; **Side by side**, fast
 Intel's driver can crash the game while building them; or **Auto**, the default: side by side on the Arc B-series with
 driver 101.9154 or newer (on a B580 a new area's first visit froze the picture for four to seven minutes one at a time,
 and not at all side by side, with no fault in ten areas), one at a time on every other Intel GPU. It applies after a
-restart. `RX_VK_NO_INTEL_SERIAL=1` is Side by side for a run and `=0` One at a time, whatever the row says. NVIDIA, AMD, and Intel on other systems are
-unchanged.
+restart. `RX_VK_NO_INTEL_SERIAL=1` is Side by side for a run and `=0` One at a time, whatever the row says; the Longshot
+Launcher's build settings set `=1` for the build's shader preparation and the game when their **Intel shader compiles**
+is on Side by side. NVIDIA, AMD, and Intel on other systems are unchanged.
 
 `RX_VK_SKIP_CODE=<prefix,...>` leaves out the draws of every program with a stage whose native code key starts with one
 of the prefixes (the keys the log prints after "its code:"). On a Steam Deck, `RX_VK_SKIP_CODE=2c56dc1006942f74`

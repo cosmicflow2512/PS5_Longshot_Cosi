@@ -135,9 +135,11 @@ int main() {
 
     // the scale: twice the cap's frame time, doubled for a slower frame, 100 ms at most
     CHECK("60 fps", near(fs::target_ms(0), 16.6667, 0.001) && near(fs::target_ms(5), 1000.0 / 240));
-    CHECK("a cap this build does not know: 60, as the host", near(fs::target_ms(9), 1000.0 / 60) && near(fs::target_ms(-1), 1000.0 / 60));
+    CHECK("a cap this build does not know: 60, as the host", near(fs::target_ms(9), 1000.0 / 60) && near(fs::target_ms(-2), 1000.0 / 60));
+    CHECK("30: 33.3 ms target", fs::cap_rate(-1) == 30 && fs::target_ms(-1) > 33.3 && fs::target_ms(-1) < 33.4);
+    CHECK("Override keeps priority", fs::cap_rate(-1, 60) == 60 && fs::cap_rate(-1, 120) == 120);
     CHECK("Uncapped: no target", fs::cap_rate(6) == 0 && fs::target_ms(6) == 0);
-    CHECK("HOS_FPS_MAX over the row", fs::cap_rate(0, 144) == 144 && fs::cap_rate(3, 30) == 60 && fs::cap_rate(0, 1000) == 0);
+    CHECK("HOS_FPS_MAX over the row", fs::cap_rate(0, 144) == 144 && fs::cap_rate(3, 30) == 30 && fs::cap_rate(0, 1000) == 0);
     CHECK("V-Sync On at a slower display", near(fs::target_ms_for(144, true, 60), 1000.0 / 60) &&
                                                near(fs::target_ms_for(60, true, 144), 1000.0 / 60) &&
                                                near(fs::target_ms_for(0, true, 165), 1000.0 / 165));

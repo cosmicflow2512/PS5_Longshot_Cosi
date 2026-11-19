@@ -21,13 +21,41 @@ static volatile LONG nvsync;
 static HANDLE vsync_thread;
 
 static int fps_max(void);   /* (below: HOS_FPS_MAX) */
+/* (longshot) The ticker's wait. hos_sleep_ns under a millisecond yields in a loop until the time (hos_thread.c), so an
+   uncapped ticker (1 ms period) spun a core. This waits on a thread-local high-resolution waitable timer instead, as
+   sleep_ns does for the game's own sleeps; the timer cannot be made: hos_sleep_ns. HOS_VSYNC_YIELD=1: hos_sleep_ns
+   always, as before */
+static void vsync_wait_ns(int64_t ns) {
+    static _Thread_local HANDLE timer;
+    static _Thread_local int tried;
+    if (!tried) {
+        tried = 1;
+        timer = CreateWaitableTimerExW(NULL, NULL, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
+        if (!timer) hos_log("vi: the vsync ticker has no high-resolution timer: it waits by yielding");
+    }
+    if (timer) {
+        LARGE_INTEGER due;
+        due.QuadPart = -(ns / 100 > 0 ? ns / 100 : 1);   /* relative, 100 ns units */
+        if (SetWaitableTimerEx(timer, &due, 0, NULL, NULL, NULL, 0)) {
+            WaitForSingleObject(timer, INFINITE);
+            return;
+        }
+    }
+    hos_sleep_ns(ns);
+}
+static void vsync_sleep(int64_t ns) {
+    static int yield = -1;   /* (read once: only the ticker calls this) */
+    if (yield < 0) yield = env_on("HOS_VSYNC_YIELD");
+    if (yield) hos_sleep_ns(ns);
+    else vsync_wait_ns(ns);
+}
 static DWORD WINAPI vsync_main(void *p) {
     (void)p;
     int64_t next = hos_now_ns() + 1000000000LL / fps_max();
     for (;;) {
         const int64_t period = 1000000000LL / fps_max();   /* (each tick: the menu's cap changes in play) */
         const int64_t now = hos_now_ns();
-        if (next > now) hos_sleep_ns(next - now);
+        if (next > now) vsync_sleep(next - now);
         next += period;
         if (next < hos_now_ns()) next = hos_now_ns() + period;   /* (fell behind: no burst of vsyncs) */
         for (LONG i = 0; i < nvsync; i++) hos_system_event_signal(vsync_events[i]);
@@ -116,7 +144,7 @@ static volatile int present_interval = 1;
    (realtime_step), so the game is not sped up. Uncapped is a cap of 1000 (FPS_UNCAPPED), the pacing's 1 ms: the frames
    come as fast as the PC makes them (a display that waits for its refresh, V-Sync On, still holds them to its rate).
    The row applies in play: fps_refresh reads it (HOS_OPT_FPS_CAP) at each present, and realtime_step gives the game back its
-   own limiter and step when the cap comes down. HOS_FPS_MAX=<61-1000> goes over the row for a run, with any number (a 75 or
+   own limiter and step when the cap comes down. HOS_FPS_MAX=30 or <61-1000> goes over the row for a run, with any number (a 75 or
    100 Hz screen) where the row has steps. Unset or 60: 60, as on the console */
 int hos_ini_option(const char *key, int otherwise);   /* (nn_applet.c) */
 int rx_option(int id, int otherwise);
@@ -131,21 +159,22 @@ enum { FPS_UNCAPPED = 1000, FPS_MOVIE = 240 };   /* (FPS_MOVIE: the pacing while
 static volatile uint64_t movie_seen_at;
 static const int64_t MOVIE_STALE_NS = 250000000LL;   /* (a quarter second: three 60 fps frames of grace) */
 static volatile int fps_now;   /* (the cap this present runs at, 0 before the first: fps_refresh) */
-static int fps_of(int want) { return want > 60 ? (want > FPS_UNCAPPED ? FPS_UNCAPPED : want) : 60; }
+static int fps_of(int want) { return want == 30 ? 30 : want > 60 ? (want > FPS_UNCAPPED ? FPS_UNCAPPED : want) : 60; }
 static void fps_refresh(void) {
-    /* (the Insert menu's Frame rate cap, frame_rate_cap=: 0 the console's 60, then 90, 120, 144, 165, 240, 6 Uncapped; a value
+    /* (the Insert menu's Frame rate cap, frame_rate_cap=: 0 the console's 60, then 90, 120, 144, 165, 240, 6 Uncapped, -1 the 30 FPS cap; a value
        this build does not know is 60. The options file's until the renderer answers, HOS_FPS_MAX over both) */
     static const int caps[] = {60, 90, 120, 144, 165, 240, FPS_UNCAPPED};
     enum { CAPS = sizeof caps / sizeof caps[0] };
-    static int env = -1, start = -1, movie_pace = -1;
-    if (start < 0) {
+    static int env, start, read, movie_pace;
+    if (!read) {
+        read = 1;
         const char *e = getenv("HOS_FPS_MAX");
         env = e ? fps_of(atoi(e)) : 0;
         start = hos_ini_option("frame_rate_cap", 0);
         movie_pace = !(getenv("HOS_MOVIE_PACE") && !atoi(getenv("HOS_MOVIE_PACE")));   /* (0: the movie pacing off) */
     }
     const int i = env ? 0 : rx_option(HOS_OPT_FPS_CAP, start);
-    const int row = env ? env : fps_of(caps[i >= 0 && i < CAPS ? i : 0]);
+    const int row = env ? env : fps_of(i == -1 ? 30 : caps[i >= 0 && i < CAPS ? i : 0]);
     int v = row;
     /* (issue #73: while a movie's player is updating, pace at FPS_MOVIE even at the console's cap: its pictures come one
        per update and the updates follow the frame loop, so a 60 fps loop undersupplies a 59.95-picture-second movie.
@@ -165,7 +194,7 @@ static void fps_refresh(void) {
     if (v == FPS_MOVIE && row == 60) hos_log("vi: a movie is playing: the frame rate goes to %d for it (HOS_MOVIE_PACE=0 leaves it)", FPS_MOVIE);
     else if (was == FPS_MOVIE && row == 60) hos_log("vi: the movie is over: back to the game's frame rate cap 60");
     else if (v == FPS_UNCAPPED) hos_log("vi: frame rate uncapped: pacing, the game's limiter and its time step follow the frames");
-    else if (v > 60) hos_log("vi: frame rate cap %d: pacing, the game's limiter and its time step follow it", v);
+    else if (v != 60) hos_log("vi: frame rate cap %d: pacing, the game's limiter and its time step follow it", v);
     else if (was) hos_log("vi: frame rate cap 60: the game's own limiter and step");
 }
 static int fps_max(void) {
@@ -185,7 +214,10 @@ int hos_vi_native_interval(Ctx *c, int requested) {
     if (game_interval < 0) game_interval = getenv("HOS_GAME_INTERVAL") && atoi(getenv("HOS_GAME_INTERVAL")) != 0;
     int rx_option(int id, int otherwise);
     const int clamped = requested < 1 ? 1 : requested > 4 ? 4 : requested;
-    present_interval = game_interval || !rx_option(0, 1) ? clamped : 1;
+    /* (longshot) 30 has its own display period; interval 2 would pace it to 15.
+       It also keeps real time even when the saved Game speed is Per frame. */
+    fps_refresh();
+    present_interval = fps_max() == 30 ? 1 : game_interval || !rx_option(0, 1) ? clamped : 1;
     return requested;
 }
 /* (longshot) The window's textures as the console's display queue has them: each present is shown at its display
@@ -349,6 +381,32 @@ uint32_t hos_frame_whole(uint64_t at, uint32_t amount_bits) {
     ReleaseSRWLockExclusive(&frame_whole_lock);
     return whole;
 }
+/* (the same for a counter that runs `times` substeps a frame: the whole substeps, so a frame above 60 fps runs some of them
+   instead of all or none) */
+uint32_t hos_frame_whole_times(uint64_t at, uint32_t amount_bits, uint32_t times) {
+    AcquireSRWLockExclusive(&frame_whole_lock);
+    const uint32_t whole = frame_whole_times(&frame_whole_state, at, amount_bits, times,
+                                             __atomic_load_n(&hos_frame_seconds_bits, __ATOMIC_RELAXED) != 0);
+    ReleaseSRWLockExclusive(&frame_whole_lock);
+    return whole;
+}
+/* (nx2/oot_patches.py patch_loop_steps, patch_loop_pose) the step of an animation entry's clock, and the time a skeleton is drawn at,
+   for a loop of one frame or less while the frames' own time is the step: whole frames, and the loop's start (host/loop_step.h,
+   issue 988: the frozen Zoras twitched above a 60 cap). Anything else, and a cap of 60, as the game has it. */
+#include "loop_step.h"
+static LoopStep loop_step_state;
+static SRWLOCK loop_step_lock = SRWLOCK_INIT;   /* (the game's update threads) */
+uint32_t hos_loop_step(uint64_t at, uint32_t step_bits, uint32_t start_bits, uint32_t end_bits) {
+    const int timed = __atomic_load_n(&hos_frame_seconds_bits, __ATOMIC_RELAXED) != 0;
+    if (!timed || !loop_is_pose(start_bits, end_bits)) return step_bits;   /* (most entries: no lock) */
+    AcquireSRWLockExclusive(&loop_step_lock);
+    const uint32_t whole = loop_step(&loop_step_state, at, step_bits, start_bits, end_bits, timed);
+    ReleaseSRWLockExclusive(&loop_step_lock);
+    return whole;
+}
+uint32_t hos_loop_pose(uint32_t time_bits, uint32_t start_bits, uint32_t end_bits) {
+    return loop_pose(time_bits, start_bits, end_bits, __atomic_load_n(&hos_frame_seconds_bits, __ATOMIC_RELAXED) != 0);
+}
 volatile uint64_t hos_res_module = 0;   /* (f_831f3200's object, whose +0xe5c is the 3D's scale: nx2/oot_patches.py) */
 /* Quantize the time step to the engine's integer nominal rate. Keep debt from a short frame even when the minimum
    step is 1/60: discarding it made alternating short/long frames advance more game time than elapsed wall time.
@@ -433,21 +491,21 @@ static void realtime_step(int64_t now) {
             clock_before = game_clock, at_before = now;
         }
         if (target && *limit > 0 && *limit < target) *limit = target;
-        /* (the cap raises the limiter; it comes down in play: the game's own value back, the one it had when the cap raised it,
-           unless the game has written its own since) */
+        /* (longshot) 30 lowers the limiter; higher caps raise it. On return to 60, restore the game's value
+           from before the override, unless the game has written a new one since. */
         static int raised, game_limit;
-        if (fps_max() > 60 && *limit > 0 && *limit < fps_max()) {
+        if (fps_max() != 60 && *limit > 0 && (fps_max() == 30 || *limit < fps_max())) {
             if (*limit != raised) game_limit = *limit;
             *limit = raised = fps_max();
-        } else if (raised && *limit == raised && fps_max() < raised) {
-            *limit = fps_max() > 60 ? fps_max() : game_limit;
-            raised = fps_max() > 60 ? fps_max() : 0;
+        } else if (raised && *limit == raised && fps_max() != raised) {
+            *limit = fps_max() != 60 ? fps_max() : game_limit;
+            raised = fps_max() != 60 ? fps_max() : 0;
         }
     }
-    /* (the Insert menu's Game speed "per frame": a frame is a 60th of a second of game time. Not past 60 fps: the game would run
-       faster than real time, so a cap above 60 keeps the real-time step whatever that row says) */
+    /* (longshot) Per frame advances a 60th of game time per frame. 30 always uses wall time to avoid half speed;
+       caps above 60 do too, to avoid running fast. Keep the saved preference for when the cap returns to 60. */
     static int slot_set;   /* (the rate this function last wrote: one over the cap is ours from before it came down) */
-    if (!rx_option(0, 1) && fps_max() <= 60) {
+    if (!rx_option(0, 1) && fps_max() == 60) {
         int *slot = (int *)GP(mod + 0x2c8);
         __atomic_store_n(&hos_frame_seconds_bits, 0, __ATOMIC_RELAXED);   /* (the cap came down from past 60: the game's own step) */
         if ((*slot >= 15 && *slot <= 60) || (slot_set && *slot == slot_set)) *slot = slot_set = 60;
@@ -478,7 +536,7 @@ static void realtime_step(int64_t now) {
        HOS_FPS_STEP=0, or a lift without the hook (hos_step_probe unset): the rate up to the cap, as before */
     static int timed_step = -1;
     if (timed_step < 0) timed_step = !(getenv("HOS_FPS_STEP") && !atoi(getenv("HOS_FPS_STEP")));
-    const int timed = fps_max() > 60 && timed_step && hos_step_probe;
+    const int timed = fps_max() != 60 && timed_step && hos_step_probe;
     if (timed) {
         const double secs = sum / count, shortest = 1.0 / (fps_max() > 240 ? fps_max() : 240);
         const float f = (float)(secs > 4.0 / 60.0 ? 4.0 / 60.0 : secs < shortest ? shortest : secs);
@@ -491,7 +549,7 @@ static void realtime_step(int64_t now) {
     const int top = timed ? 60 : fps_max();
     const double ratio = sum / count * 60.0;
     int *slot = (int *)GP(mod + 0x2c8);
-    if (*slot < 15 || (*slot > fps_max() && *slot != slot_set)) {
+    if (*slot < 15 || (*slot > (fps_max() < 60 ? 60 : fps_max()) && *slot != slot_set)) {
         static int logged;
         if (!logged++) hos_log("vi: the graphics module's frame rate reads %d: no real-time step", *slot);
         return;

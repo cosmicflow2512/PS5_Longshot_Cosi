@@ -20,6 +20,7 @@
 #include <stdlib.h>   /* (getenv: undeclared, it was taken to return an int) */
 #include <string.h>
 #include <time.h>
+#include "../../gpu/vk/compat/longshot_env.h"   /* (env_on: the switches' one rule) */
 
 int sceSystemServiceHideSplashScreen(void);
 int sceSystemServiceLoadExec(const char *path, const char *const *argv);
@@ -141,7 +142,7 @@ pad_state(int player)
     * during a run took the game through the menus early and to another place, and the run measured something else) */
    static int no_pad = -1;
    if (no_pad < 0)
-      no_pad = getenv("HOS_PS5_NO_PAD") != NULL;
+      no_pad = env_on("HOS_PS5_NO_PAD");
    if (no_pad || !pad_service || player < 0 || player >= PAD_PLAYERS || pad_states[player].handle < 0)
       return NULL;
    return &pad_states[player];

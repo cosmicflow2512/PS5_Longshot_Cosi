@@ -10,6 +10,7 @@
 #include <string.h>
 #include <time.h>
 #include <windows.h>   /* (the exe's folder; the browser build: the Microsoft C runtime's time functions) */
+#include "hos_atomic_file.h"   /* (language.txt's first write is whole or not at all) */
 
 static int64_t boot_ns;
 
@@ -65,10 +66,12 @@ static const char *desired_language(void) {
                 break;
             }
             fclose(f);
-        } else if ((f = fopen(path, "w")) != NULL) {
-            fputs("# The game's language. Change the line below to one of the codes listed here, save, and start the game again.\n\nen-US\n\n", f);
-            for (size_t i = 0; i < sizeof languages / sizeof *languages; i++) fprintf(f, "# %-8s %s\n", languages[i].code, languages[i].name);
-            fclose(f);
+        } else {   /* (written whole or not at all: half a template has no language line) */
+            char text[2048];
+            size_t n = (size_t)snprintf(text, sizeof text, "# The game's language. Change the line below to one of the codes listed here, save, and start the game again.\n\nen-US\n\n");
+            for (size_t i = 0; i < sizeof languages / sizeof *languages && n < sizeof text; i++)
+                n += (size_t)snprintf(text + n, sizeof text - n, "# %-8s %s\n", languages[i].code, languages[i].name);
+            if (n < sizeof text) hos_atomic_write(path, text, n);
         }
     }
     want[strcspn(want, " \t\r\n")] = 0;
@@ -276,7 +279,9 @@ HLE(_ZN2nn4time19StandardSteadyClock3nowEv) { RET((uint64_t)(hos_now_ns() / 1000
 static void socket_poll(Ctx *c) {
     const uint64_t fds = ARG(0), n = ARG(1);
     const int timeout = (int)ARG(2);
-    for (uint64_t i = 0; fds && i < n && i < 4096; i++) *(uint16_t *)GP(fds + 8 * i + 6) = 0;   /* revents */
+    const uint64_t m = n < 4096 ? n : 4096;
+    if (fds && hos_guest_range(fds, 8 * m))   /* (longshot: the descriptors in guest memory) */
+        for (uint64_t i = 0; i < m; i++) *(uint16_t *)GP(fds + 8 * i + 6) = 0;   /* revents */
     if (timeout != 0) {
         const int away = hos_vcore_away();
         hos_sleep_ns((int64_t)(timeout < 0 || timeout > 50 ? 50 : timeout) * 1000000);

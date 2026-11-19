@@ -65,7 +65,9 @@ CACHES = ("longshot_programs.bin", "longshot_programs.idx", "longshot_programs.z
           "longshot_module_ids.bin", "longshot_pipelines.bin", "longshot_pipelines.bin.predicted", "longshot_pipelines.bin.predicted_keys",
           "longshot_pipelines.bin.built",
           "longshot_computes.bin", "longshot_compute_variants.bin", "longshot_pipeline_states.bin",
-          "longshot_pipeline_states_v1.bin", "longshot_prepared.bin", "longshot_vk_pipelines.bin", "longshot_vk_pipelines.stamp")
+          "longshot_pipeline_states_v1.bin", "longshot_prepared.bin", "longshot_vk_pipelines.bin", "longshot_vk_pipelines.stamp",
+          # (the textures a draw has sampled, for RX_VK_TEX_AHEAD: gpu/vk/texture_ahead.h)
+          "longshot_textures_drawn.bin")
 PLAY_FILES = re.compile(r"longshot_vk_pipelines_play_[0-9]+\.bin")   # (what play adds to the pipeline cache: gpu/vk/vk_draw.cpp play_path)
 # (what the game writes into its folder at run time, never a build's output: the caches (and the button prompts it makes) in
 # cache/, the logs in logs/ (host/game_layout.c)
@@ -415,10 +417,10 @@ def write_base(d, b):
 
 
 def pack_folders(d):
-    """Where a base's packs are built: one work folder for the game and one for the renderer, the same for every pack. The lift key
-    (make_game.lift_key) hashes the work and game folders' paths with the lift's environment, so a translation is reused only in
-    the folder, and for the game folder, it was made for: a game pack after the first on a base skips the lift while the translator,
-    the HLE list and the hot list are the base's. One pack builds at a time"""
+    """Where a base's packs are built: one work folder for the game and one for the renderer, the same for every pack. A translation
+    is kept in the work folder it was made in (make_game.lift_key; LONGSHOT_LIFT_STORE shares it with other folders): a game pack
+    after the first on a base skips the lift while the translator, the HLE list and the hot list are the base's. One pack builds at
+    a time"""
     return {"game_work": os.path.join(d, "game-work"), "game_out": os.path.join(d, "game-out"),
             "renderer_work": os.path.join(d, "renderer-work")}
 

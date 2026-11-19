@@ -60,7 +60,7 @@ int main() { return 0; }
         ('"MihawkGen FG"' in menu, "the console's network has no name in the menu"),
         ("fg.by == by" in framegen, "a change of the row does not make the generators again"),
         ("fg_by::wants_network(fg.by" in framegen, "the network is loaded whatever the row names"),
-        ("note_maker(flow ? FgMaker::BuiltIn : who)" in framegen, "Auto's frames by the console's generator are not noted"),
+        ("note_maker(fsr ? FgMaker::Fsr3 : flow ? FgMaker::BuiltIn : who)" in framegen, "Auto's frames by the console's generator are not noted"),
         ("atoi(eq + 1) < fg_by::kLeast) opts.framegen_by = fg_by::kDefault" in menu,
          "a file's Auto is not the network's on the console"),
     ], "the console's Frame generation by row: its values, the network only where asked, its frames noted")

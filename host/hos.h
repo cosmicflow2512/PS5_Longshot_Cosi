@@ -14,6 +14,7 @@
 #define HOS_H
 #include "a64.h"
 #include <stdarg.h>
+#include <stddef.h>
 
 /* HOS_HLE_STATS=1 (off by default): each HLE function counts its calls, and hos_hostcall.c logs every 5 s how often each
    ran. Off, a call costs a test of the switch and a branch more: the counted arm is a tail call, so the function saves
@@ -38,9 +39,15 @@ void hos_hle_counted(HleCount *h, void (*fn)(Ctx *c), Ctx *c);
 #endif
 /* ENTRY_HOOK(0x0xxxxxxx) { ... }: runs at the entry of the lifted guest function at that address (8 hex digits),
    with its arguments in c; return 1 when it handled the call (the function then returns at once, x0 is the result),
-   0 to run the function as usual. build.py splices the call into the lifted code (only that file recompiles). */
+   0 to run the function as usual. (mkw-recomp's build.py spliced these in; Longshot's lift does not, so one defined here
+   would never run. ENTRY_HOOK_SYM below is spliced.) */
 #define ENTRY_HOOK(addr) int entry_##addr(Ctx *c)
+/* ENTRY_HOOK_SYM(sym) { ... }: the same at the entry of the SDK's definition of the symbol (found in the image's symbol table),
+   spliced in by the standalone lift (nx2/entry_hooks.py; a new one lifts again) */
 #define ENTRY_HOOK_SYM(sym) int entry_sym_##sym(Ctx *c)
+/* ENTRY_HOOK_SYM_FROM(sym, min) { ... }: the same, called only when x2 (the size argument) is min or more: the spliced line
+   tests it, so smaller calls stay in the lifted code without a call (the hook declines them too) */
+#define ENTRY_HOOK_SYM_FROM(sym, min) int entry_sym_##sym(Ctx *c)
 /* SPLICE_AFTER(0x0xxxxxxx, "text") { ... }: runs inside the lifted guest function at that address, right after the
    first line of its lifted C that contains the text (a game patch in the middle of a function: c holds the guest
    registers there). build.py splices the call in and stops the build if the text is not found. One per function. */
@@ -63,10 +70,14 @@ void hos_hle_counted(HleCount *h, void (*fn)(Ctx *c), Ctx *c);
 #ifdef __PROSPERO__
 /* (PS5) 64 GiB of the 39-bit space: the window sits at A64_HOST_BASE = 64 GiB and ends where the platform layer's heap
    reserves its 16 GiB (128 GiB, PS5_HEAP_HINT; Mesa's device memory follows at 256 GiB: host/ps5/win32_ps5.h). The guest's
-   heap starts at 16 GiB instead of 64 (HOS_HEAP_BASE below), its address regions come down from 64 GiB */
-#define HOS_GUEST_SPACE 0x1000000000ULL
-#else
+   heap starts at 16 GiB instead of 64 (HOS_HEAP_BASE below), its address regions come down from 64 GiB. (The PC's literal
+   stays the one #define with a number: tests/test_registration_host_copies.py reads it) */
+#define HOS_PS5_GUEST_BYTES 0x1000000000ULL
+#endif
 #define HOS_GUEST_SPACE (1ULL << 39)
+#ifdef __PROSPERO__
+#undef HOS_GUEST_SPACE
+#define HOS_GUEST_SPACE HOS_PS5_GUEST_BYTES
 #endif
 extern const uint64_t hos_image_base, hos_image_end;   /* (gen/hos_image.c) */
 extern const uint64_t hos_program_id;                  /* (gen/hos_image.c: main.npdm's) */
@@ -77,6 +88,17 @@ int hos_game_is_mkw(void);
 #define HOS_GAME_TITLE "Longshot"
 uint64_t hos_used_memory(uint64_t base);   /* (hos_mem.c) base + heap + the game's mapped pages: the used memory it is told */
 int hos_commit(uint64_t addr, uint64_t size);          /* (mkw_glue.c) guest pages made usable by host APIs: 1, or 0 if refused */
+/* (mkw_glue.c, issue 333) host memory the game cannot go on without: never NULL (but for 0 bytes). At the commit limit a failed
+   allocation is tried again for up to 5 s, as a guest commit is; then the out-of-memory line and notice, and the game stops.
+   what names it in the log. hos_out_of_memory: that line and notice, once a run (wait: shown here, or waited for, before the
+   caller stops the game) */
+void *hos_xmalloc(size_t size, const char *what);
+void *hos_xcalloc(size_t count, size_t size, const char *what);
+void *hos_xrealloc(void *old, size_t size, const char *what);
+void hos_out_of_memory(int wait);
+/* (mkw_glue.c, issue 1280) the end of hos_alloc_failed's wait: the line, the notice and the stop (n 0: the size not known, as for
+   the renderer's C++ allocations, MkwVkHost out_of_memory). Does not return */
+void hos_alloc_gave_up(size_t n, const char *what);
 int hos_mem_region(uint64_t addr, uint64_t size);      /* (hos_mem.c) the control bridge: 0 if not wholly in mapped guest memory */
 #if defined(A64_WRITE_TRACK) && !defined(__EMSCRIPTEN__)
 void hos_mark_written(const void *p, size_t n);   /* (hos_mem.c: guest memory written by host code, native soft watch) */
@@ -90,14 +112,35 @@ void web_mark_written(const void *p, size_t n);   /* (hos/web/win32.c: guest mem
 #ifdef A64_MEM_ZERO
 extern uint64_t hos_space_end;   /* web: the guest window ends where the host's own data starts (hos_main.c) */
 #define HOS_SPACE_END hos_space_end
+#elif defined(__PROSPERO__)
+#define HOS_SPACE_END HOS_GUEST_SPACE   /* (PS5: the console's 64 GiB window, above) */
 #else
-#define HOS_SPACE_END HOS_GUEST_SPACE
+#define HOS_SPACE_END 0x8000000000ULL
 #endif
 /* (longshot) host pointer of the n guest bytes at a, NULL unless all of them lie in the guest window. For addresses
    and sizes host code takes from guest memory or arguments before it reads or writes there: GP alone wraps around
    to any host address. */
 static inline void *hos_guest_range(uint64_t a, uint64_t n) {
     return a < (uint64_t)HOS_SPACE_END && n <= (uint64_t)HOS_SPACE_END - a ? GP(a) : (void *)0;
+}
+/* (longshot) Host code's bulk writes of guest memory: n bytes at guest address a filled with a value, or copied from
+   host memory. The write, then the mark of its pages (HOS_WRITTEN), in that order: the renderer's capture takes a mark
+   and then copies the page, so a mark set before the bytes could be taken with the old bytes, and nothing would say
+   the page changed again. Any thread may call them at any time: the mark is a lock-free store, as the lifted code's
+   own after each of its stores, and one made while a capture is being taken stays set for the next capture. Why they
+   exist: memory the renderer had imported was zeroed at a free with no mark, and the renderer's copies of it (mirror,
+   capture, write-back shadow) kept the old bytes. tests/test_host_guest_writes.py stops a new memset or memcpy into
+   guest memory that is neither one of these nor followed by a mark, unless it is on its list with the reason.
+   The caller has checked the range (hos_guest_range). */
+static inline void hos_guest_fill(uint64_t a, int value, uint64_t n) {
+    void *const p = GP(a);
+    memset(p, value, (size_t)n);
+    HOS_WRITTEN(p, (size_t)n);
+}
+static inline void hos_guest_copy(uint64_t a, const void *src, uint64_t n) {
+    void *const p = GP(a);
+    memcpy(p, src, (size_t)n);
+    HOS_WRITTEN(p, (size_t)n);
 }
 #define HOS_TICK_HZ 31250000ULL   /* (mkw-recomp: the Switch 2 counter; the SDK checks it at init) */
 
@@ -108,6 +151,38 @@ extern int hos_trace;
 void hos_log(const char *fmt, ...);
 void hos_log_at(int level, const char *fmt, ...);
 void hos_log_flush(void);
+/* (longshot) the slow-frame recorder (host/slow_frames.c, HOS_SLOW_FRAMES): its path (NULL: off), the sampler's interval, a
+   present (rx_nvn_present), a sample and a sweep's end (the all-thread samplers) */
+const char *hos_slow_frames_path(void);
+int hos_slow_frames_every_ms(void);
+void hos_slow_frame_present(void);
+void hos_slow_sample(int64_t sweep_ns, const char *text);
+void hos_slow_sweep_done(void);
+/* (longshot) an A/B within one run (host/hos_ab.c, HOS_AB=<switch>=<value>[,<seconds>[,<warm-up seconds>]]): the side now,
+   -1 when no A/B runs or in its warm-up, else 0 (the switch's normal value) or 1 (the A/B's value): one relaxed load, cheap
+   enough for a per-call path. A switch's reader takes the A/B as v = hos_ab_value(<its name, a literal>, v_normal): v_normal
+   unless the A/B names that switch and side 1 runs. Both sides pay the same for the call (a load, then a look at a small
+   table of the names seen, by address), so the measured difference is the switch's. hos_ab_frame: the side of a frame from
+   from_ns to to_ns (hos_now_ns), + 2 in a transition (a flip in the frame, or less than 0.3 s before its end), -1 outside */
+extern int hos_ab_side_now;
+static inline int hos_ab_side(void) { return __atomic_load_n(&hos_ab_side_now, __ATOMIC_RELAXED); }
+int hos_ab_value_at(const char *name, int normal, int side);
+static inline int hos_ab_value(const char *name, int normal) {
+    const int side = hos_ab_side();
+    return side < 0 ? normal : hos_ab_value_at(name, normal, side);
+}
+int hos_ab_frame(int64_t from_ns, int64_t to_ns);
+void hos_ab_start(void);     /* (hos_main.c, before the game's threads) */
+void hos_ab_present(void);   /* (rx_nvn_present: the host's per-side sums) */
+void hos_ab_end(void);       /* (hos_close_finish: their line in the log) */
+/* (longshot) the profiling mode (host/profiling.c, HOS_PROFILE=1): its folder (NULL: off), its switches set (after
+   longshot_env.txt), its threads started (hos_prof_start), a timed event into its events.txt, and a sampler's line written
+   (packed with HOS_SAMPLE_PACKED) */
+const char *hos_profiling_dir(void);
+void hos_profiling_env(void);
+void hos_profiling_start(void);
+void hos_profiling_event(const char *fmt, ...);
+void hos_sample_write(void *file, const char *line);   /* (a FILE *: hos.h reads no stdio.h) */
 #define HOS_TRACE_CALL(name) do { if (hos_trace) hos_log_at(HOS_LOG_TRACE, "%s(%#llx, %#llx, %#llx, %#llx) lr %#llx", name, \
     (unsigned long long)c->x[0], (unsigned long long)c->x[1], (unsigned long long)c->x[2], \
     (unsigned long long)c->x[3], (unsigned long long)c->x[30]); } while (0)

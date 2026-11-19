@@ -1192,9 +1192,10 @@ static uint64_t zero_units_now(uint64_t *ahead) {
 
 /* ---- HOS_PS5_CPU=1: the whole process's CPU use every 5 s (every thread, the ones the sampler cannot see too) ---- */
 #include <sys/resource.h>
+#include "../../gpu/vk/compat/longshot_env.h"   /* (env_on: the switches' one rule) */
 static void *cpu_meter(void *unused) {
     (void)unused;
-    if (getenv("HOS_PS5_ZERO_SCAN")) {
+    if (env_on("HOS_PS5_ZERO_SCAN")) {
         uint8_t *marks = calloc(GUEST_UNITS, 1);
         pthread_mutex_lock(&window_lock);
         unit_ahead = marks;
@@ -1222,7 +1223,7 @@ static void *cpu_meter(void *unused) {
             pthread_mutex_lock(&window_lock);
             const uint64_t kept = (uint64_t)free_count * UNIT, ahead = (uint64_t)(block_end - block_next);
             pthread_mutex_unlock(&window_lock);
-            if (getenv("HOS_PS5_ZERO_SCAN")) {
+            if (env_on("HOS_PS5_ZERO_SCAN")) {
                 const double z0 = now_ms();
                 uint64_t ahead = 0;
                 const uint64_t zero = zero_units_now(&ahead);

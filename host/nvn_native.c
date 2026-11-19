@@ -26,6 +26,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <windows.h>
+#ifdef TRACY_ENABLE
+#define HT_WRAP_LOCKS   /* (LONGSHOT_TRACY: this file's locks that have to wait are zones) */
+#include "hos_tracy.h"
+#endif
 #ifndef LONGSHOT_ENV_H   /* (env_on: the switches' one rule) */
 #include "../gpu/vk/compat/longshot_env.h"
 #endif
@@ -188,7 +192,22 @@ NV(nvnDeviceInitialize) {
     RET(1);
 }
 NV(nvnDeviceFinalize) { ((nvn_dev *)P(0))->magic = 0; }
-NV(nvnDeviceGetProcAddress) { RET(U64(1) ? nvn_native_proc((const char *)GP(U64(1))) : 0); }
+/* (longshot) A proc name the game passes: read only inside guest memory and up to 255 characters, copied into out ("" when it
+   is not a string there). It was read in place to its end, which a pointer near the window's end (or no end) took past the
+   guest's memory into the host's */
+static const char *guest_name(uint64_t a, char *out, size_t cap) {
+    out[0] = 0;
+    const uint64_t room = a && a < (uint64_t)HOS_SPACE_END ? (uint64_t)HOS_SPACE_END - a : 0;
+    const size_t lim = room < cap ? (size_t)room : cap;
+    const char *s = lim ? (const char *)hos_guest_range(a, lim) : NULL;
+    const char *end = s ? (const char *)memchr(s, 0, lim) : NULL;
+    if (end) memcpy(out, s, (size_t)(end - s) + 1);
+    return out;
+}
+NV(nvnDeviceGetProcAddress) {
+    char name[256];
+    RET(U64(1) ? nvn_native_proc(guest_name(U64(1), name, sizeof name)) : 0);
+}
 /* (longshot) API version 231.40: OoT (SDK 22.2.8) skips its graphics setup unless the minor is >= 40 (main
    0x8348c11c); MKW's driver said 39, which MKW accepts too. */
 /* The Switch 2 NVN2 driver's device limits: its nvnDeviceGetInteger (sdk+0x65b680) run for every id under
@@ -378,6 +397,10 @@ NV(nvnMemoryPoolGetBufferAddress) {
 NV(nvnMemoryPoolFlushMappedRange) {}   /* CPU writes are seen through write watch */
 NV(nvnMemoryPoolInvalidateMappedRange) {   /* the CPU is about to read what the GPU wrote */
     if (no_pool(c, "invalidate mapped range")) return;
+#ifdef TRACY_ENABLE
+    HT_ZONE(tz, "nvnMemoryPoolInvalidateMappedRange");   /* (a readback: may wait for the GPU) */
+    HT_ZONE_TEXTF(tz, "%llu bytes, lr %#llx", (unsigned long long)U64(2), (unsigned long long)c->x[30]);
+#endif
     const nvn_pool *o = (const nvn_pool *)P(0);
     if ((int64_t)U64(1) >= 0) rx_nvn_invalidate(o->gpu + U64(1), U64(2));
 }
@@ -508,6 +531,10 @@ NV(nvnBufferGetMemoryOffset) { RET((uint64_t)((const nvn_buffer *)P(0))->off); }
 NV(nvnBufferGetSize) { RET(((const nvn_buffer *)P(0))->size); }
 NV(nvnBufferFlushMappedRange) {}
 NV(nvnBufferInvalidateMappedRange) {
+#ifdef TRACY_ENABLE
+    HT_ZONE(tz, "nvnBufferInvalidateMappedRange");   /* (a readback: may wait for the GPU) */
+    HT_ZONE_TEXTF(tz, "%llu bytes, lr %#llx", (unsigned long long)U64(2), (unsigned long long)c->x[30]);
+#endif
     const nvn_buffer *o = (const nvn_buffer *)P(0);
     if (o->pool) rx_nvn_invalidate(POOL(o->pool)->gpu + (uint64_t)o->off + U64(1), U64(2));
 }
@@ -946,8 +973,17 @@ static void texels(Ctx *c, int write, int strided) {
                 (unsigned long long)chain[0], (unsigned long long)chain[1], (unsigned long long)chain[2],
                 (unsigned long long)chain[3], (unsigned long long)chain[4], (unsigned long long)chain[5]);
     }
+#ifdef TRACY_ENABLE
+    HT_ZONE(tz, "nvn texels");
+    HT_ZONE_TEXTF(tz, "%s", write ? "write" : "read");
+#endif
     if (write) rx_nvn_write_texels(t, level, layer0, r, data, row, img), watch_texels_source(t, data, img);
-    else rx_nvn_read_texels(t, level, layer0, r, data, row, img);
+    else {
+        /* (the texels land in a buffer of the game's choosing, which may be memory the GPU reads later, a pool it
+           uploads from: marked written after the copy, as any host write of guest memory the renderer may hold) */
+        rx_nvn_read_texels(t, level, layer0, r, data, row, img);
+        if (data) HOS_WRITTEN(data, (size_t)extent);
+    }
 }
 NV(nvnTextureReadTexels) { texels(c, 0, 0); }
 NV(nvnTextureReadTexelsStrided) { texels(c, 0, 1); }
@@ -1093,6 +1129,9 @@ static void held_init(void) {
 static void held_flush(void) {
     held_init();
     if (!nheld) return;
+#ifdef TRACY_ENABLE
+    HT_SCOPE("nvn held_flush");
+#endif
     EnterCriticalSection(&held_cs);
     for (LONG i = 0; i < nheld; i++) rx_nvn_submit(held[i].h, held[i].n);
     nheld = 0;
@@ -1135,6 +1174,11 @@ NV(nvnSyncWait) {
     if (rx_nvn_wait(s->fence, 0)) { RET(NVN_SYNC_WAIT_RESULT_ALREADY_SIGNALED); return; }
     static int block = -1;   /* HOS_NVN_SYNC_BLOCK=1 (experiment): a poll waits for the GPU */
     if (block < 0) block = env_on("HOS_NVN_SYNC_BLOCK");
+#ifdef TRACY_ENABLE
+    HT_WAIT(tz, "nvnSyncWait");
+    HT_ZONE_TEXTF(tz, "fence %llu, timeout %.3f ms, lr %#llx", (unsigned long long)s->fence, U64(1) / 1e6,
+                  (unsigned long long)c->x[30]);
+#endif
     const int away = hos_vcore_away();
     const int64_t t0 = hos_now_ns();
     const int ok = rx_nvn_wait(s->fence, block ? ~0ull >> 1 : U64(1));
@@ -1229,6 +1273,10 @@ NV(nvnQueueFinalize) { ((nvn_queue *)P(0))->magic = 0; }
 NV(nvnQueueGetError) { if (P(1)) memset(P(1), 0, sizeof(NVNqueueErrorInfo)); RET(NVN_QUEUE_GET_ERROR_RESULT_GPU_NO_ERROR); }
 NV(nvnQueueFlush) { held_flush(); }
 NV(nvnQueueFinish) {
+#ifdef TRACY_ENABLE
+    HT_WAIT(tz, "nvnQueueFinish");
+    HT_ZONE_TEXTF(tz, "lr %#llx", (unsigned long long)c->x[30]);
+#endif
     held_flush();
     const int away = hos_vcore_away();
     const int64_t t0 = hos_now_ns();
@@ -1263,10 +1311,10 @@ static unsigned pool_class(size_t n) {
     return c;
 }
 /* a block of at least n bytes; *cls its class (POOL_MAX + 1: from the heap, n bytes) */
-static void *pool_get(size_t n, unsigned *cls) {
+static void *pool_get(size_t n, unsigned *cls, const char *what) {   /* (never NULL: hos_xmalloc) */
     const unsigned c = pool_off() ? POOL_MAX + 1 : pool_class(n);
     *cls = c;
-    if (c > POOL_MAX) return malloc(n);
+    if (c > POOL_MAX) return hos_xmalloc(n, what);
     AcquireSRWLockExclusive(&pool_lock);
     void *b = pool_head[c];
     if (b) {
@@ -1274,7 +1322,7 @@ static void *pool_get(size_t n, unsigned *cls) {
         pool_bytes[c] -= (uint64_t)1 << c;
     }
     ReleaseSRWLockExclusive(&pool_lock);
-    return b ? b : malloc((size_t)1 << c);
+    return b ? b : hos_xmalloc((size_t)1 << c, what);
 }
 static void pool_put(void *b, unsigned cls) {
     if (!b) return;
@@ -1315,8 +1363,7 @@ static cmd_rec *cmd_adopt(nvn_cmd *o) {
     const uint32_t s = ncmd_free ? cmd_free[--ncmd_free] : cmd_next++;
     if ((s >> CMD_CHUNK_BITS) >= CMD_CHUNKS) die("too many command buffers");
     if (!cmd_chunks[s >> CMD_CHUNK_BITS]) {
-        cmd_rec *k = (cmd_rec *)calloc((size_t)1 << CMD_CHUNK_BITS, sizeof *k);
-        if (!k) die("command buffer table");
+        cmd_rec *k = (cmd_rec *)hos_xcalloc((size_t)1 << CMD_CHUNK_BITS, sizeof *k, "native NVN: command buffer table");
         cmd_chunks[s >> CMD_CHUNK_BITS] = k;
     }
     cmd_rec *r = cmd_slot(s);
@@ -1350,8 +1397,7 @@ static void cmd_release(nvn_cmd *o) {   /* the object's slot and recording buffe
     memset(r, 0, sizeof *r);
     if (ncmd_free == cap_cmd_free) {
         cap_cmd_free = cap_cmd_free ? cap_cmd_free * 2 : 256;
-        cmd_free = (uint32_t *)realloc(cmd_free, cap_cmd_free * sizeof *cmd_free);
-        if (!cmd_free) die("command buffer table");
+        cmd_free = (uint32_t *)hos_xrealloc(cmd_free, cap_cmd_free * sizeof *cmd_free, "native NVN: command buffer table");
     }
     cmd_free[ncmd_free++] = o->slot;
     ReleaseSRWLockExclusive(&cmd_lock);
@@ -1388,8 +1434,7 @@ static void cmd_reserve_rec(cmd_rec *o, size_t need) {
     if (!cap) cap = 64 << 10;
     while (used + need + OP_RESERVE > cap) cap *= 2;
     unsigned cls;
-    uint8_t *b = (uint8_t *)pool_get(cap, &cls);
-    if (!b) die("recording buffer (%zu bytes)", cap);
+    uint8_t *b = (uint8_t *)pool_get(cap, &cls, "native NVN: recording buffer");
     if (o->seg) {
         memcpy(b, o->seg, used);
         InterlockedAdd64(&seg_bytes, -(LONG64)(o->end - o->seg));
@@ -1458,9 +1503,8 @@ static size_t live_at(uint64_t h, size_t cap) { return (size_t)((h * 0x9E3779B97
 static void live_handle_add(uint64_t h) {   /* (copy_lock held exclusively) */
     if ((nlive + 1) * 2 > live_cap) {
         const size_t cap = live_cap ? live_cap * 2 : 65536;
-        uint64_t *t = (uint64_t *)calloc(cap, sizeof *t);
-        live_table *pub = (live_table *)malloc(sizeof *pub);
-        if (!t || !pub) die("recording handle set");
+        uint64_t *t = (uint64_t *)hos_xcalloc(cap, sizeof *t, "native NVN: recording handle set");
+        live_table *pub = (live_table *)hos_xmalloc(sizeof *pub, "native NVN: recording handle set");
         for (size_t i = 0; i < live_cap; i++) {
             if (!live_handles[i]) continue;
             size_t k = live_at(live_handles[i], cap);
@@ -1533,8 +1577,7 @@ static void free_dead_copies(void) {   /* (copy_lock held) */
 static void dead_copy_add(copy_prefix *p, uint64_t after) {   /* (copy_lock held) */
     if (ndead == cap_dead) {
         cap_dead = cap_dead ? cap_dead * 2 : 1024;
-        dead = (dead_copy *)realloc(dead, cap_dead * sizeof *dead);
-        if (!dead) die("recording copies let go");
+        dead = (dead_copy *)hos_xrealloc(dead, cap_dead * sizeof *dead, "native NVN: recording copies let go");
     }
     dead[ndead].p = p;
     dead[ndead].after = after;
@@ -1580,10 +1623,10 @@ static void release_copies(uint64_t lo, uint64_t hi) {
    or calling a recording waited behind it */
 #define SWEEP_EVERY 1024u
 #define SWEEP_SLICE 2688u   /* (65536 / 2688 * 1024: every bucket once in ~25,000 recordings) */
-static void sweep_overwritten_copies(void) {   /* (copy_lock held) */
+static size_t sweep_overwritten_copies(void) {   /* (copy_lock held) */
     static int off = -1;
     if (off < 0) off = env_on("HOS_NVN_NO_SWEEP");
-    if (off || !rec_buckets) return;
+    if (off || !rec_buckets) return 0;
     free_dead_copies();
     const uint64_t after = rx_nvn_pushed() + held_count();
     size_t swept = 0;
@@ -1620,7 +1663,9 @@ static void sweep_overwritten_copies(void) {   /* (copy_lock held) */
         }
     }
     static int logged;
-    if (swept && logged++ < 12) hos_log_at(HOS_LOG_DEBUG, "nvn: %zu copies of recordings whose control memory was reused let go (%zu live)", swept, ncopies);
+    if (!swept || logged == 12) return 0;
+    logged++;
+    return swept;
 }
 NV(nvnCommandBufferAddControlMemory) {
     nvn_cmd *o = CB(P(0));
@@ -1651,8 +1696,7 @@ NV(nvnCommandBufferBeginRecording) {
 /* the recording, BEGIN to END, is contiguous in the command buffer's segment: one copy of it */
 static uint8_t *flatten(const uint8_t *p, size_t n) {
     unsigned cls;
-    uint8_t *out = (uint8_t *)pool_get(sizeof(copy_prefix) + n, &cls);
-    if (!out) die("recording copy (%zu bytes)", n);
+    uint8_t *out = (uint8_t *)pool_get(sizeof(copy_prefix) + n, &cls, "native NVN: recording copy");
     memcpy(out + sizeof(copy_prefix), p, n);
     copy_prefix *pre = (copy_prefix *)out;
     pre->cls = cls;
@@ -1682,6 +1726,10 @@ static void watch_handle_called(Ctx *c, uint64_t h, const char *how) {
     }
 }
 NV(nvnCommandBufferEndRecording) {
+#ifdef TRACY_ENABLE
+    HT_ZONE(tz, "nvnCommandBufferEndRecording");   /* (the recorded commands' copy) */
+    HT_ZONE_TEXTF(tz, "lr %#llx", (unsigned long long)c->x[30]);
+#endif
     nvn_cmd *o = CB(P(0));
     uint8_t *p = cmd_alloc(o, 8);
     put_hdr(p, NOP_END, 8);
@@ -1713,12 +1761,24 @@ NV(nvnCommandBufferEndRecording) {
     ncopies++;
     live_handle_add((uint64_t)(uintptr_t)copy);
     static uint64_t made;
-    if (++made % SWEEP_EVERY == 0) sweep_overwritten_copies();
-    if (made % 50000 == 0)
-        hos_log("nvn: %llu recordings made, %zu live copies (%.1f MB), %zu texture copies; %lld command buffers' segments "
-                "(%.1f MB)", (unsigned long long)made, ncopies, copy_bytes / 1048576.0, npins, (long long)seg_count,
-                seg_bytes / 1048576.0);
+    const uint64_t recording = ++made;
+    const size_t swept = recording % SWEEP_EVERY == 0 ? sweep_overwritten_copies() : 0;
+    const int report = recording % 50000 == 0;
+    const size_t live_copies = (report || swept) ? ncopies : 0;
     ReleaseSRWLockExclusive(&copy_lock);
+    if (report || swept) {
+        /* stderr can block for hundreds of milliseconds. Other recorders and guests pinned to
+           this thread's virtual core must be able to run while the line is being written. */
+        const int away = hos_vcore_away();
+        if (swept)
+            hos_log_at(HOS_LOG_DEBUG, "nvn: %zu copies of recordings whose control memory was reused let go (%zu live)", swept, live_copies);
+        if (report)
+            hos_log("nvn: %llu recordings made, %zu live copies (%.1f MB), %zu texture copies; %lld command buffers' segments "
+                    "(%.1f MB)", (unsigned long long)recording, live_copies, __atomic_load_n(&copy_bytes, __ATOMIC_RELAXED) / 1048576.0,
+                    __atomic_load_n(&npins, __ATOMIC_RELAXED), (long long)__atomic_load_n(&seg_count, __ATOMIC_RELAXED),
+                    __atomic_load_n(&seg_bytes, __ATOMIC_RELAXED) / 1048576.0);
+        if (away) hos_vcore_back();
+    }
     if (watch_draw_cmd && watch_draw_cmd == (void *)o && nwatch_handles < 16) {
         watch_handles[nwatch_handles++] = (uint64_t)(uintptr_t)copy;
         watch_draw_cmd = NULL;
@@ -2213,8 +2273,7 @@ static int pin_same(const nvn_tex *a, const nvn_tex *b) {
 }
 static void pins_grow(void) {
     const size_t n = pin_slots ? pin_slots * 2 : (1u << 16);
-    nvn_tex **t = (nvn_tex **)calloc(n, sizeof *t);
-    if (!t) die("texture copies table (%zu slots)", n);
+    nvn_tex **t = (nvn_tex **)hos_xcalloc(n, sizeof *t, "native NVN: texture copies table");
     for (size_t i = 0; i < pin_slots; i++)
         if (pins[i]) {
             size_t s = (size_t)(pin_hash(pins[i]) >> 20) & (n - 1);
@@ -2230,13 +2289,13 @@ static void tex_copy(const nvn_tex **dst, uint64_t t) {
     if (!o->serial) die("recording refers to an uninitialized texture object %#llx", (unsigned long long)t);
     const uint64_t h = pin_hash(o);
     AcquireSRWLockExclusive(&pin_lock);
-    if (npins * 2 >= pin_slots) pins_grow();
+    if (__atomic_load_n(&npins, __ATOMIC_RELAXED) * 2 >= pin_slots) pins_grow();
     size_t s = (size_t)(h >> 20) & (pin_slots - 1);
     while (pins[s] && !pin_same(pins[s], o)) s = (s + 1) & (pin_slots - 1);
     if (!pins[s]) {
         pins[s] = (nvn_tex *)malloc(sizeof(nvn_tex));
         *pins[s] = *o;
-        npins++;
+        __atomic_fetch_add(&npins, 1, __ATOMIC_RELAXED);
     }
     *dst = pins[s];
     ReleaseSRWLockExclusive(&pin_lock);
@@ -2449,6 +2508,10 @@ NV(nvnQueueSubmitCommands) {
     { void hos_renderer_wait(void); static volatile LONG up; if (!up) { hos_renderer_wait(); up = 1; } }   /* (display.c) */
     nvn_queue *q = (nvn_queue *)P(0);
     const int n = I(1);
+#ifdef TRACY_ENABLE
+    HT_ZONE(tz, "nvnQueueSubmitCommands");
+    HT_ZONE_TEXTF(tz, "queue %p, %d handles, lr %#llx", (void *)q, n, (unsigned long long)c->x[30]);
+#endif
     uint64_t h[64];
     if (n < 0 || n > 64) die("submit of %d handles", n);
     memcpy(h, PN(2, 8 * (size_t)n), 8 * (size_t)n);
@@ -2570,6 +2633,9 @@ NV(nvnWindowAcquireTexture) {
     nvn_sync *s = (nvn_sync *)P(1);
     *(int *)P(2) = o->active ? o->next++ % o->active : 0;
     {
+#ifdef TRACY_ENABLE
+        HT_WAIT(tz, "nvnWindowAcquireTexture");   /* (the frame's pacing: host/nn_vi.c) */
+#endif
         const int away = hos_vcore_away();
         hos_vi_native_acquire(o->active ? o->active : o->ntex);
         if (away) hos_vcore_back();
@@ -2583,6 +2649,10 @@ NV(nvnQueuePresentTexture) {
     const int i = I(2);
     if (i < 0 || i >= o->ntex) die("present of window texture %d", i);
     HOS_CHAIN(HOS_CHAIN_PRESENT, (uint64_t)i);
+#ifdef TRACY_ENABLE
+    HT_FRAME();   /* (LONGSHOT_TRACY: a frame ends where the game presents) */
+    HT_ZONE(tz, "nvnQueuePresentTexture");
+#endif
     const int trace = hos_vi_present_trace_enabled();
     int64_t phases[4] = {0};
     if (trace) phases[0] = hos_now_ns();
@@ -3306,6 +3376,6 @@ void nvn2_dispatch(Ctx *c, const char *name, void **cache) {
 
 /* nvnBootstrapLoader(char const* name) -> the proc */
 HLE(nvnBootstrapLoader) {
-    const char *name = ARG(0) ? (const char *)GP(ARG(0)) : "";
-    RET(nvn_native_proc(name));
+    char name[256];
+    RET(nvn_native_proc(guest_name(ARG(0), name, sizeof name)));
 }

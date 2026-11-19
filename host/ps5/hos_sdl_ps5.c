@@ -62,6 +62,15 @@ void *hos_sdl_window(const char *title, int width, int height) {
     mode_wanted();
     return &window_token;
 }
+/* (Longshot v3.0.0's monitors: the console has one display, always the whole screen) */
+struct MkwVkMonitor;
+int hos_sdl_monitor_list(void *window, struct MkwVkMonitor *out, uint32_t *tokens, int cap) {
+    (void)window, (void)out, (void)tokens, (void)cap;
+    return 0;
+}
+uint32_t hos_sdl_window_display(void *window) { (void)window; return UINT32_MAX; }
+int hos_sdl_fullscreen_target(void *window, int on, uint32_t token) { (void)window, (void)on, (void)token; return 1; }
+int hos_sdl_is_fullscreen(void *window) { (void)window; return 1; }
 void hos_sdl_fullscreen(void *window, int on) { (void)window, (void)on; }
 void hos_sdl_relative_mouse(void *window, int on) { (void)window, (void)on; }
 int hos_sdl_desktop_size(int *width, int *height) {
@@ -170,12 +179,30 @@ static void audio_fill(int16_t *frames, int count, void *user) {
             }
         }
 }
-int hos_sdl_audio_open(int freq, int channels, int s16, void (*pull)(void *user, uint8_t *out, int len), void *user) {
+/* (Longshot v3.0.0's hos_sdl.h: an output device chosen by token (UINT32_MAX the default), a handle, NULL when it does not
+   open, a close and an alive check. The console has one output: the handle is a token for it, alive while it plays) */
+static int audio_token, audio_open_now;
+void *hos_sdl_audio_open(unsigned device, int freq, int channels, int s16, void (*pull)(void *user, uint8_t *out, int len),
+                         void *user) {
+    (void)device;
     if (freq != 48000) hos_log("ps5: the game's sound is %d Hz, played as 48000", freq);
-    if (channels < 1 || channels > 8) return 0;
+    if (channels < 1 || channels > 8) return NULL;
     audio_pull = pull, audio_user = user, audio_channels = channels, audio_s16 = s16;
-    return audio_start(audio_fill, NULL);
+    if (!audio_start(audio_fill, NULL)) return NULL;
+    audio_open_now = 1;
+    return &audio_token;
 }
+void hos_sdl_audio_close(void *audio) {
+    if (audio == &audio_token && audio_open_now) audio_stop(), audio_open_now = 0;
+}
+int hos_sdl_audio_alive(void *audio) { return audio == &audio_token && audio_open_now; }
+/* (the output devices: only the console's default one, which the menu names Default) */
+int hos_sdl_output_count(void) { return 0; }
+int hos_sdl_output_info(int index, char *id, int id_capacity, char *name, int name_capacity) {
+    (void)index, (void)id, (void)id_capacity, (void)name, (void)name_capacity;
+    return 0;
+}
+int hos_sdl_output_resolve(const char *id) { (void)id; return -1; }
 int hos_sdl_audio_channels(void) { return 2; }
 
 /* ---- microphones: none ---- */
