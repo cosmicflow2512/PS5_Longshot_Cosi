@@ -19,8 +19,8 @@
 </p>
 
 > [!NOTE]
-> **Fork `cosmicflow2512/PS5_Longshot_Cosi`:** PS5_Longshot (heydemoura) with its open pull requests #6, #18–#23, #32, #33 and
-> #35 merged, on [Longshot v3.0.0](https://git.magicbean.dev/MagicBeanDev/Longshot/releases) (2026-11-19). The title is
+> **Fork `cosmicflow2512/PS5_Longshot_Cosi`:** PS5_Longshot (heydemoura) with its open pull requests #6, #18–#23, #32, #33, #35 and
+> #40–#42 merged, on [Longshot v3.0.0](https://git.magicbean.dev/MagicBeanDev/Longshot/releases) (2026-11-19). The title is
 > **PPSA99198** (#35). Lossless Scaling's frame generation (#21) reads your own `Lossless.dll` from the title's `lossless/`
 > folder. Experimental: it builds and its checks pass; on the console it is untested.
 
