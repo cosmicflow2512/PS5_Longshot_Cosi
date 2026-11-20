@@ -106,7 +106,7 @@ def main():
     ask = block(cache, "bool program_cache_complete_ask(")
     need("complete_from(p, disk_in, &disk_mu, busy)" in ask, "the dispatch's ask waits for the gate")
     complete = block(cache, "bool complete_from(")
-    need("make_module(spirv, p.key, busy)" in complete and "p.code_at = code_at, p.code_words = words;" in complete,
+    need("make_module(spirv, p.key, busy)" in complete and ("p.code_at = code_at, p.code_words = words;" in complete or "p.code_at = code_at, p.code_words = packed;" in complete),
          "a busy gate fails the program, or loses its code")
     link = block(draw, "VkPipeline gpl_link(")
     need(link.index("IntelDriverGate") < link.index("guarded_graphics"), "gpl_link's pipeline is not guarded")

@@ -38,7 +38,14 @@ def check_source():
                        ("void precompile_run(void (*progress)(size_t done, size_t total)) {", "}, plan.all, true);")):
         at = draw.index(head)
         body = draw[at:draw.index("\n}\n", at)]
-        if call not in body or "fallbacks.push_back(&p);" not in body or "fallback_compute_pipelines(" not in body:
+        # (longshot, PS5 #47: an install whose first start prepared the whole game leaves them out on the console alone; every
+        # other start asks for them as before)
+        ps5 = call == "}, false, true);" and "}, false, fallbacks_ready);" in body and "bool fallbacks_ready = true;" in body
+        if ps5:
+            gate = body[body.index("bool fallbacks_ready = true;"):body.index("}, false, fallbacks_ready);")]
+            ps5 = gate.count("fallbacks_ready = false") == 1 and gate.index("#ifdef __PROSPERO__") < gate.index(
+                "fallbacks_ready = false") < gate.index("#endif")
+        if (call not in body and not ps5) or "fallbacks.push_back(&p);" not in body or "fallback_compute_pipelines(" not in body:
             raise SystemExit(head.split("(")[0] + " no longer asks for every mesh fallback program and makes its compute pipelines")
 
 

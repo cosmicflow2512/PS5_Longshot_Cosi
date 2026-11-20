@@ -133,10 +133,7 @@ size_t ZSTD_decompress(void* dst, size_t cap, const void* src, size_t n) {
 unsigned ZSTD_isError(size_t n) { return n == (size_t)-1; }
 }
 // (the preparation's held records, kDiskHold: none here, every record written as it is saved)
-constexpr size_t kDiskHold = 0;
-std::atomic<size_t> disk_held{0};
 std::vector<uint8_t> disk_pend, idx_pend;
-int64_t disk_end = -1;
 // (the census's counters and the load at a program's create call, gpu/vk/vk_programs.h: counted, none here)
 struct { int64_t loads = 0, load_ns = 0; bool background = false; } use_counters;
 struct { int64_t play_loads = 0, play_load_ns = 0; } census;
