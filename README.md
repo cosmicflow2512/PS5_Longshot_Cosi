@@ -21,7 +21,8 @@
 > [!NOTE]
 > **Fork `cosmicflow2512/PS5_Longshot_Cosi`:** PS5_Longshot (heydemoura) with its open pull requests #6, #18–#23, #32, #33, #35 and
 > #40–#42 merged, on [Longshot v3.0.0](https://git.magicbean.dev/MagicBeanDev/Longshot/releases) (2026-11-19). The title is
-> **PPSA99198** (#35). Lossless Scaling's frame generation (#21) reads your own `Lossless.dll` from the title's `lossless/`
+> **LGSH00001** (heydemoura's #52; it was PPSA99198 up to v3.0.0-ps5.6, and the first start under the new ID takes the old
+> folder's saves, settings, caches, `lossless/` and `fsr4/` over). Lossless Scaling's frame generation (#21) reads your own `Lossless.dll` from the title's `lossless/`
 > folder. Experimental: it builds and its checks pass; on the console it is untested.
 
 > [!IMPORTANT]
@@ -138,13 +139,13 @@ The builder carries its own compiler, Python and the ready-built parts of the ti
 5. Press **Build**. The window shows the five steps and, under Show details, the log. Stop keeps what is done: the
    next Build goes on from there.
 
-When it ends you have a folder named **`PPSA99198`** in the folder you chose. It is made from your game: **never
+When it ends you have a folder named **`LGSH00001`** in the folder you chose. It is made from your game: **never
 share it.**
 
 ### Put it on the console
 
-1. Copy the whole **`PPSA99198`** folder to **`/data/homebrew/`** on the console, so that it is
-   `/data/homebrew/PPSA99198`. Either type the console's address in the builder and press **Send to PS5**, or copy it
+1. Copy the whole **`LGSH00001`** folder to **`/data/homebrew/`** on the console, so that it is
+   `/data/homebrew/LGSH00001`. Either type the console's address in the builder and press **Send to PS5**, or copy it
    with any FTP program.
 2. Copy your game file to the console as **`/data/eglantineps5/roms/oot.nup`** (make the folders if they are not
    there). It is 25 GB: this is the long copy. A file already there for another program, under
@@ -180,12 +181,18 @@ Follow the console to go back. It applies after a restart, which the menu offers
 
 ### Updating
 
-To update an existing `PPSA99198` installation, rebuild with the new builder and copy the resulting folder over
-the one on the console. This keeps your saves and settings.
+Download the new builder, build again and copy the new `LGSH00001` folder over the one on the console. Your saves
+and settings are in that folder on the console and are not in the one you copy: they stay.
+
+**From v0.1.4 or earlier (title ID `PPSA99025`):** Longshot has its own title ID now, `LGSH00001`, because
+`PPSA99025` is also another homebrew's (#29). Copy the new `LGSH00001` folder to `/data/homebrew/` as usual and start
+it: its first start copies your saves and settings from `/data/homebrew/PPSA99025` and moves the old folder's shader
+caches over, so it does not prepare the shaders again. A notice says when it has; the old folder can then be deleted,
+and its tile on the home screen with it.
 
 ### Where the files go
 
-On the console, everything of Longshot's is in `/data/homebrew/PPSA99198`:
+On the console, everything of Longshot's is in `/data/homebrew/LGSH00001`:
 
 | | |
 |---|---|
@@ -197,7 +204,7 @@ On the console, everything of Longshot's is in `/data/homebrew/PPSA99198`:
 | `cache/`, `radv-shader-cache/` | Shaders made as you play. Safe to delete: they are made again. |
 | `logs/`, `bug-reports/` | What the title wrote about its runs. |
 
-On your computer, the folder you built into holds `PPSA99198` and `longshot-ps5-work`, the build's own files (about
+On your computer, the folder you built into holds `LGSH00001` and `longshot-ps5-work`, the build's own files (about
 3 GB). Keep the second one and the next build is short; delete it and nothing is lost but time.
 
 ### What it connects to
@@ -215,7 +222,7 @@ network. The title on the console does not look for updates.
   `--appimage-extract-and-run`.
 - **Windows shows a warning when the builder starts:** it is not code-signed.
 - **Send to PS5 fails:** the console has to be on, with its FTP server running, at that address and port.
-- **Longshot is not on the home screen:** the folder has to be `/data/homebrew/PPSA99198` itself, with `eboot.bin`
+- **Longshot is not on the home screen:** the folder has to be `/data/homebrew/LGSH00001` itself, with `eboot.bin`
   directly inside it, and your homebrew environment has to list titles from there.
 - **The title does not reach the game's logos:** check the game file's name and place in "Put it on the console"
   first. What happens without the file was not tried.

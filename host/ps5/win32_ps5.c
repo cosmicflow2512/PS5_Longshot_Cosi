@@ -1243,6 +1243,7 @@ static void notify_player(const char *text) {   /* (a notification on the consol
     snprintf(note.message, sizeof note.message, "%s", text);
     (void)sceKernelSendNotificationRequest(0, &note, sizeof note, 0);
 }
+void hos_ps5_notify(const char *text) { notify_player(text); }   /* (host/ps5/migrate_id.c) */
 static uint64_t floor_bytes(void) {
     const char *e = getenv("HOS_PS5_MEM_FLOOR_MB");
     return (e && *e ? strtoull(e, NULL, 10) : 192) << 20;

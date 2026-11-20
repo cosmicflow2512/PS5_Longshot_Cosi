@@ -161,6 +161,7 @@ SW(HOS_PS5_GYRO, kill, bool, "on: player 0's DualSense motion sensors are report
 SW(HOS_PS5_HZ, player, int, "the 60 Hz mode of the chosen size", "(PS5) Over 61 (e.g. 120) picks that size's 119.88 Hz mode where the screen has one, for made frames past 60 a second.")
 SW(HOS_PS5_LANG_ID, diag, int, "the console's language (sceSystemServiceParamGetInt)", "(PS5) <number>: a test run's console language id, to see another language's answer without changing the console's.")
 SW(HOS_PS5_MEM_FLOOR_MB, tune, int, "192: below that much free direct memory the title closes itself, with a notification", "(PS5) The floor in MiB; 0 turns the memory floor off.")
+SW(HOS_PS5_NO_MIGRATE, kill, bool, "off: the first start under LGSH00001 takes saves, settings, caches, lossless/ and fsr4/ over from a PPSA99198 or PPSA99025 Longshot folder", "(PS5) =1 takes nothing over.")
 SW(HOS_PS5_NO_PAD, diag, bool, "off: the controller is read", "(PS5) =1 (a test run's) reads no controller, so only the run's input script plays.")
 SW(HOS_PS5_NUP, player, string, "the first of the known places on the console that holds the game's .nup", "(PS5) The path of the game's .nup the romfs is read from in place.")
 SW(HOS_PS5_RENDER_MB, tune, int, "2560", "(PS5) The renderer's memory budget's cap in MiB (vk_vma.cpp ps5_render_budget), under the free direct memory less HOS_PS5_RESERVE_MB.")

@@ -2,9 +2,9 @@
     python3 ps5/tools/save.py backup [DIR]     /app0/user/save to DIR (default work/save-backup)
     python3 ps5/tools/save.py restore [DIR]    DIR over /app0/user/save
 """
-import ftplib, io, os, sys
+import ftplib, io, json, os, sys
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-REMOTE = "/data/homebrew/PPSA99198/user/save"
+REMOTE = "/data/homebrew/" + (os.environ.get("PS5_TITLE") or json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "sce_sys", "param.json")))["titleId"]) + "/user/save"   # (the title ID: PS5_TITLE, else ps5/sce_sys/param.json)
 cmd = sys.argv[1]
 local = sys.argv[2] if len(sys.argv) > 2 else os.path.join(ROOT, "work", "save-backup")
 f = ftplib.FTP(); f.connect(os.environ.get("PS5_HOST", "192.168.50.115"), 2121, timeout=30); f.login(); f.voidcmd("TYPE I")

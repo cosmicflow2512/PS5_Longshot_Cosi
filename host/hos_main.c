@@ -2444,6 +2444,8 @@ int main(int argc, char **argv) {
     }
     void hos_ps5_quit_watch(void);
     hos_ps5_quit_watch();   /* (a test run's clean stop: host/ps5/win32_ps5.c) */
+    void hos_ps5_migrate_old_id(void);
+    hos_ps5_migrate_old_id();   /* (an earlier title ID's saves and caches, before anything opens them: host/ps5/migrate_id.c) */
 #endif
     hos_game_layout();   /* (the game folder's cache/ and logs/, before anything writes there, --prepare-shaders too: host/game_layout.c) */
     {

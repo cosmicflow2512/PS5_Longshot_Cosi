@@ -2,7 +2,7 @@
 
     python3 ps5/tools/run.py NAME [--seconds 120] [--env 'KEY=VALUE' ...] [--deploy]
 
---deploy uploads what changed in dist/PPSA99198 first. The run's switches go to /app0/hookshot_test_env.txt, which the
+--deploy uploads what changed in dist/<title ID> first. The run's switches go to /app0/hookshot_test_env.txt, which the
 title reads in place of a player's hookshot_env.txt and with none of its limits (host/hos_main.c), and which is taken
 away when the run ends: a player's start never sees a test's input script. PS5_Vulkan's run tool launches the title and
 captures klog; after --seconds this puts /app0/quit-run.txt in the title folder, and the title leaves through the shell
@@ -14,6 +14,7 @@ The console: PS5_HOST (default 192.168.50.115, my Pro).
 import argparse
 import ftplib
 import io
+import json
 import os
 import re
 import subprocess
@@ -25,7 +26,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 VULKAN = os.environ.get("PS5_VULKAN", os.path.join(ROOT, "..", "PS5_Vulkan"))
 os.environ.setdefault("PS5_HOST", "192.168.50.115")
 sys.path.insert(0, os.path.join(VULKAN, "tools"))
-TITLE = "PPSA99198"
+TITLE = (os.environ.get("PS5_TITLE") or json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "sce_sys", "param.json")))["titleId"])   # (the title ID: PS5_TITLE, else ps5/sce_sys/param.json)
 APP = "/data/homebrew/" + TITLE
 
 
@@ -87,6 +88,14 @@ def main():
     spec = importlib.util.spec_from_file_location("run_title", os.path.join(VULKAN, "tools", "run-title.py"))
     rt = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(rt)
+
+    class _TitleRe:   # (run-title.py takes PPSA12345 IDs alone; Longshot's is four letters of its own: any four capitals here)
+        def __getattr__(self, name):
+            return getattr(re, name)
+
+        def fullmatch(self, pattern, string, flags=0):
+            return re.fullmatch(r"[A-Z]{4}\d{5}" if pattern == r"PPSA\d{5}" else pattern, string, flags)
+    rt.re = _TitleRe()
     # (a crash record ends the run only when it is not a payload's: the console's other homebrew (ps5-web-stream's supervisor,
     # ps5debug) runs as payload.elf and its crashes are not the title's. The record names the process a few lines in)
     rt.CRASH = re.compile(r"# proc name: (?!payload\.elf)|GPU_FAULT|gpu fault", re.I)

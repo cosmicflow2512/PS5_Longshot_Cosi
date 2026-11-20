@@ -76,11 +76,13 @@ std::vector<std::pair<std::string, std::string>> candidate_dirs() {
     const std::string second_var = want_int8 ? "lite" : "int8";
     for (const std::string& v : {first_var, second_var}) {
         out.emplace_back(v, "/app0/fsr4/" + v);
-        out.emplace_back(v, "/data/longshot/PPSA99198/fsr4/" + v);
+        out.emplace_back(v, "/data/longshot/LGSH00001/fsr4/" + v);
+        out.emplace_back(v, "/data/longshot/PPSA99198/fsr4/" + v);   // (the title's ID before LGSH00001: a folder set up then)
         out.emplace_back(v, "/data/longshot/PPSA99025/fsr4/" + v);   // (the title's ID before 10455cd: a folder set up then)
         out.emplace_back(v, "/data/eglantineps5/user/fsr4/" + v);
     }
     out.emplace_back("direct", "/app0/fsr4");
+    out.emplace_back("direct", "/data/longshot/LGSH00001/fsr4");
     out.emplace_back("direct", "/data/longshot/PPSA99198/fsr4");
     out.emplace_back("direct", "/data/longshot/PPSA99025/fsr4");
     return out;
@@ -107,7 +109,7 @@ bool load() {
         }
     }
     if (r.dir.empty()) {
-        logf("vk: AMD FSR 4: no asset set found under /app0/fsr4 or /data/longshot/PPSA99198/fsr4");
+        logf("vk: AMD FSR 4: no asset set found under /app0/fsr4 or /data/longshot/LGSH00001/fsr4");
         return fail(FSR_NO_LIBRARY);
     }
 

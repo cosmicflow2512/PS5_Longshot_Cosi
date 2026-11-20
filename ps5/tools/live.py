@@ -6,11 +6,12 @@
 """
 import ftplib
 import io
+import json
 import os
 import sys
 
 HOST = os.environ.get("PS5_HOST", "192.168.50.115")
-APP = "/data/homebrew/PPSA99198"
+APP = "/data/homebrew/" + (os.environ.get("PS5_TITLE") or json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "sce_sys", "param.json")))["titleId"])   # (the title ID: PS5_TITLE, else ps5/sce_sys/param.json)
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
