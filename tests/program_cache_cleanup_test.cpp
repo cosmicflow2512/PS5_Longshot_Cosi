@@ -121,6 +121,7 @@ FILE* disk_out = nullptr;
 FILE* disk_idx = nullptr;
 constexpr size_t kDiskHold = 0;   // (as off the console: nothing held)
 std::atomic<size_t> disk_held{0};   // (vk_progcache.cpp's: atomic, read without the lock)
+std::vector<uint8_t> disk_pend, idx_pend;   // (the preparation's held records: none here)
 int64_t disk_end = -1;
 std::mutex disk_mu;
 std::unordered_map<uint64_t, std::vector<DiskRecord>> disk_records;
