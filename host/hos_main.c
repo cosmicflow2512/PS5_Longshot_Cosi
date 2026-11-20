@@ -2468,9 +2468,6 @@ int main(int argc, char **argv) {
                at every start, over the player's choice in the menu and over Auto) */
             {"RX_VK_ASTC_BC_MB", "0"}, {"RX_VK_PACE", "1"},
             {"RX_VK_FSR_FG", "0"},
-            /* (every shader translated before the first play, where hookshot_shaders.bin is beside the game, without the
-               driver's part: with it the 4,128 compute programs alone went at ~1.3 a second, hours in all; without, ~26) */
-            {"RX_VK_NO_WARM", "1"},
             /* (the recordings' 48 descriptor pools at an eighth: 4 MiB of the driver's memory each as they come, 195 MiB in
                all, for the few programs past the push limit; one that runs out is followed by another) */
             {"RX_VK_DESC_POOL_DIV", "8"},
