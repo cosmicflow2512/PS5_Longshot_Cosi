@@ -175,6 +175,13 @@ def native_parts(system, vulkan, cache, top, kit):
         shutil.copy2(os.path.join(zbic_src, f), os.path.join(zbic_dir, f))
     if system == "windows-x64":
         run([cc, "-O2", "-municode", "-mwindows", "-static", os.path.join(HERE, "launcher.c"), "-o", os.path.join(top, "LongshotPS5Builder.exe")])
+        # (the build without the window, for a terminal: a batch file runs in the console it is started from and keeps its
+        # redirects. LongshotPS5Builder.exe --cli does not: a windowed program is given no redirected output, and
+        # "--cli ... > log.txt" kept nothing, measured on Windows 11)
+        with open(os.path.join(top, "LongshotPS5Builder-cli.cmd"), "w", newline="\r\n") as f:
+            f.write('@echo off\nrem Longshot PS5 Builder without the window: "LongshotPS5Builder-cli.cmd --game <file> --out <folder> '
+                    '--model base|pro", or --check. Its output goes to this console, or where it is redirected\n'
+                    '"%~dp0python\\python.exe" -I -u "%~dp0app\\pipeline.py" %*\n')
 
 
 def stage(system, a):

@@ -218,8 +218,10 @@ network. The title on the console does not look for updates.
   directly inside it, and your homebrew environment has to list titles from there.
 - **The title does not reach the game's logos:** check the game file's name and place in "Put it on the console"
   first. What happens without the file was not tried.
-- **Without the window:** `--cli --game <file> --out <folder> --model base|pro` after the AppImage's name, or after
-  `LongshotPS5Builder.exe`. `--cli --check` checks the builder's own parts.
+- **Without the window:** `--cli --game <file> --out <folder> --model base|pro` after the AppImage's name; on Windows,
+  `LongshotPS5Builder-cli.cmd --game <file> --out <folder> --model base|pro` in the builder's folder (its output can be
+  redirected to a file; `LongshotPS5Builder.exe --cli` works too, but its output cannot). `--check` (`--cli --check` for the
+  AppImage) checks the builder's own parts.
 
 ## On the PS5: the in-game menu and controls
 
