@@ -168,7 +168,9 @@ def sources():
     if "GetEnvironmentStringsW()" not in function(relaunch, "void hos_relaunch_keep_env(void) {"):
         raise SystemExit("hos_relaunch.c: hos_relaunch_keep_env does not keep the environment block")
     hos_main = (ROOT / "host" / "hos_main.c").read_text(encoding="utf-8")
-    keep, load = hos_main.find("hos_relaunch_keep_env();"), hos_main.find("load_longshot_env();")
+    # (the first call in a function: the PS5's load_longshot_env_early, a constructor before main (#61), calls it too, and the
+    # console starts again by LoadExec, not by this restart)
+    keep, load = hos_main.find("hos_relaunch_keep_env();"), hos_main.find("\n    load_longshot_env();")
     if keep < 0 or keep > load:
         raise SystemExit("hos_main.c: the environment is not kept before longshot_env.txt is read")
 
