@@ -2131,6 +2131,7 @@ LIFT_ENV_NOT_OUTPUT = {   # (read by the lift's sources, and no change to what i
     "RX_VK_NO_F16": "nx2/bake_ds's own run",
     "HOS_NO_FASTFP": "the game's runtime (FASTFP_HEADER in nx2/fastfp.py, read by the lifted C at play)",
     "HOS_FMA_FAST": "the game's runtime (nx2/fma_soft.h, read by the generated C at play)",
+    "LONGSHOT_LIFT_DICTS": "how the lift holds its functions (nx2/compact_bodies.py): the same C either way",
 }
 
 
