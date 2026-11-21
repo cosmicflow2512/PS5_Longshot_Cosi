@@ -40,7 +40,9 @@ ADDR64 = r"""#ifndef A64_ADDR64
 #endif
 #if A64_ADDR64
 #define A64_PTR(a) (A64_MEM + (uint64_t)(a))
+#ifndef A64_DIRTY_PAGES   /* (a build whose guest window is smaller passes its own: ps5/build.py, the PS5's 64 GiB) */
 #define A64_DIRTY_PAGES (1ull << 27)   /* (nx2/rtgen.py) A64_WRITE_TRACK: a mark per 4 KB page of the 512 GB window */
+#endif
 #else
 #define A64_DIRTY_PAGES (1ull << 20)
 #define A64_PTR(a) (A64_MEM + (uint32_t)(a))

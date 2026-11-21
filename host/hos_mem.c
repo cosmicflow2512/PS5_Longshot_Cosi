@@ -354,6 +354,9 @@ int hos_mem_mapped(uint64_t addr, uint64_t n) {
 /* ---- nn::os memory -------------------------------------------------------------------------------------- */
 
 #if defined(A64_WRITE_TRACK) && !defined(__EMSCRIPTEN__)
+/* (the page marks' table covers the guest window: a build that cuts it to a smaller window says so in A64_DIRTY_PAGES,
+   ps5/build.py's 64 GiB, and a mark past it would land on another page's: the lifted stores mask their page into it) */
+_Static_assert((HOS_GUEST_SPACE >> 12) <= A64_DIRTY_PAGES, "the page marks' table (A64_DIRTY_PAGES) is smaller than the guest window");
 /* HOS_WRITTEN natively (the soft write watch, rt/a64.h A64_MARK): host code wrote [p, p + n) of guest memory */
 void hos_mark_written(const void *p, size_t n) {
     const uintptr_t a = (uintptr_t)p - (uintptr_t)A64_MEM;

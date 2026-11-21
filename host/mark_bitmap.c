@@ -5,7 +5,8 @@
    covering it is made (nvdrv.c map_add), before the mapping counts, and is never cleared: a page once GPU memory is marked
    for good, the same as without the bitmap. Writes made before the mapping need no mark: the renderer imports a new pool's
    memory as it is.
-   16 MB of zeroed static data for the 512 GB window, only the heap's part ever touched (~210 KB). HOS_MARK_BITMAP_ALL=1 sets
+   16 MB of zeroed static data for the 512 GB window, only the heap's part ever touched (~210 KB); 2 MB on the PS5, whose
+   guest window is 64 GiB (ps5/build.py's A64_DIRTY_PAGES, the page marks' table cut to it as well). HOS_MARK_BITMAP_ALL=1 sets
    every bit at the start: every store marks, as without the bitmap, plus the test's cost (the control of an A/B). */
 #include "hos.h"
 #ifndef LONGSHOT_ENV_H   /* (env_on: the switches' one rule) */
