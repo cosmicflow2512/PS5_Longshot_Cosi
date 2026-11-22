@@ -1,4 +1,4 @@
-"""PS5: the game, the runtime and the Vulkan back end compiled for the console and linked into one title, dist/<titleId> (ps5/sce_sys/param.json: LGSH00001).
+"""PS5: the game, the runtime and the Vulkan back end compiled for the console and linked into dist/<titleId> (ps5/sce_sys/param.json: LGSH00001).
 
     python3 -I ps5/build.py [--jobs N] [--compile-only]
 
@@ -148,7 +148,7 @@ def jobs_for(rt64, gen_dir):
                             os.path.join(ROOT, "gpu", "third_party", "suyu", "video_core", "textures"))
     # Dear ImGui (the menu and the overlays: vk_imgui.cpp, vk_menu.cpp), as nx2/build.py compiles it; the game's font files
     # are zstd frames, read with the console's zstd (ps5/tools/build-zstd.sh), not third_party/zstd's second copy
-    # (Lossless Scaling's frame generation: gpu/vk/lsfg's three changed files before third_party/lsfg's, the same names)
+    # (Lossless Scaling's frame generation: gpu/vk/lsfg's four changed files before third_party/lsfg's, the same names)
     lsfg_fl = ["-DLONGSHOT_LSFG", "-I" + os.path.join(VK, "lsfg"), "-I" + LSFG]
     lsfg_digest = tree_digest(LSFG)
     imgui = os.path.join(ROOT, "third_party", "imgui")
@@ -160,6 +160,8 @@ def jobs_for(rt64, gen_dir):
         out.append((os.path.join(imgui, *f.split("/")), os.path.join(OUT, "obj", "vk_imgui_" + os.path.basename(f)[:-4] + ".o"),
                     vfl + imgui_fl, imgui_digest))
     out.append((os.path.join(gen_dir, "ui_fonts.cpp"), os.path.join(OUT, "obj", "vk_ui_fonts.o"), COMMON + ["-O0", "-w"], ""))
+    # (the files that include Dear ImGui: nx2/build.py's imgui_users, Longshot v3's crash window among them)
+    IMGUI_USERS = ("vk_imgui.cpp", "vk_menu.cpp", "vk_crash_window.cpp")
     # (the start-up screen's logo, gen/longshot_logo.h, is in vk_imgui.cpp's key: a new picture compiles it again)
     logo_h = os.path.join(gen_dir, "longshot_logo.h")
     logo_digest = hashlib.sha1(open(logo_h, "rb").read()).hexdigest() if os.path.exists(logo_h) else ""
@@ -171,19 +173,23 @@ def jobs_for(rt64, gen_dir):
         fl = vfl + ([shader_stamp] if os.path.basename(s) == "vk_shader.cpp" else []) + \
             ([stamp] if os.path.basename(s) == "vk_menu.cpp" else []) + \
             (lsfg_fl if os.path.basename(s) == "vk_framegen.cpp" else []) + \
-            (imgui_fl if os.path.basename(s) in ("vk_imgui.cpp", "vk_menu.cpp") else []) + \
+            (imgui_fl if os.path.basename(s) in IMGUI_USERS else []) + \
+            (["-I" + os.path.join(VK, "fsr4")] if os.path.basename(s) == "vk_fsr4.cpp" else []) + \
             (["-DHOOKSHOT_MIHAWKGEN", "-I" + os.path.join(MIHAWKGEN, "framegen", "include")]
              if HAS_MIHAWKGEN and os.path.basename(s) == "vk_framegen.cpp" else [])
         out.append((s, os.path.join(OUT, "obj", "vk_" + rel + ".o"), fl,
-                    lib_digest if lib else vk_digest + (imgui_digest if os.path.basename(s) in ("vk_imgui.cpp", "vk_menu.cpp") else "") +
+                    lib_digest if lib else vk_digest + (imgui_digest if os.path.basename(s) in IMGUI_USERS else "") +
                     (logo_digest if os.path.basename(s) == "vk_imgui.cpp" else "")))
     # (Lossless Scaling's frame generation from the player's own Lossless.dll: third_party/lsfg, PS5SX2's port as it is, and
-    # gpu/vk/lsfg, its three files changed for Longshot, found first: their names are the same)
+    # gpu/vk/lsfg, its four files changed for Longshot, found first: their names are the same)
     for lsfg_dir in (os.path.join(VK, "lsfg"), LSFG):
         for f in sorted(os.listdir(lsfg_dir)):
             if f.endswith(".cpp"):
                 out.append((os.path.join(lsfg_dir, f), os.path.join(OUT, "obj", "lsfg_" + f[:-4] + ".o"),
                             vfl + lsfg_fl, vk_digest + lsfg_digest))
+    # Native Vulkan AMD FSR 4.1.2 static compute-replay backend (gpu/vk/fsr4/fsr411.cpp, GPL-2.0-or-later, PR #41)
+    out.append((os.path.join(VK, "fsr4", "fsr411.cpp"), os.path.join(OUT, "obj", "fsr4_fsr411.o"),
+                vfl + ["-include", os.path.join(VK, "vk_loader.h"), "-I" + os.path.join(VK, "fsr4")], vk_digest))
     if HAS_MIHAWKGEN:   # (its Vulkan calls through the back end's loaded pointers: vk_loader.h, as every unit of gpu/vk)
         mfl = vfl + ["-include", os.path.join(VK, "vk_loader.h"), "-I" + os.path.join(MIHAWKGEN, "framegen", "include"),
                      "-I" + os.path.join(MIHAWKGEN, "framegen", "src")]
@@ -211,7 +217,8 @@ def compile_one(job):
     r = subprocess.run(cc_wrapper(cxx) + flags + ["-c", src, "-o", obj], capture_output=True, text=True,
                        env=dict(os.environ, PS5_PAYLOAD_SDK=SDK, PS5_CLANG=os.environ.get("PS5_CLANG") or shutil.which("clang")))
     if r.returncode:
-        return src, (r.stdout + r.stderr)[-4000:], time.time() - t
+        # (a compiler the system killed, for want of memory, says nothing: without the exit code the empty text read as success)
+        return src, (r.stdout + r.stderr)[-4000:] or "the compiler ended with %d and no message" % r.returncode, time.time() - t
     with open(stamp, "w") as f:
         f.write(key)
     return src, None, time.time() - t
@@ -284,9 +291,11 @@ def main():
     linked = subprocess.run(["bash", os.path.join(ROOT, "ps5", "tools", "link.sh"), OUT,
                              os.path.join(kit.WORK, "sa", "image", "image.bin")], env=env).returncode
     if not linked and HAS_MIHAWKGEN:   # (the network beside the game: /app0/framegen/network.fgw, vk_framegen.cpp)
-        title_id = json.load(open(os.path.join(ROOT, "ps5", "sce_sys", "param.json")))["titleId"]   # (link.sh's dist/<titleId>)
-        os.makedirs(os.path.join(ROOT, "dist", title_id, "framegen"), exist_ok=True)
-        shutil.copy(MIHAWKGEN_NETWORK, os.path.join(ROOT, "dist", title_id, "framegen", "network.fgw"))
+        with open(os.path.join(ROOT, "ps5", "sce_sys", "param.json"), encoding="utf-8") as f:
+            title_id = json.load(f)["titleId"]
+        framegen_dir = os.path.join(ROOT, "dist", title_id, "framegen")
+        os.makedirs(framegen_dir, exist_ok=True)
+        shutil.copy(MIHAWKGEN_NETWORK, os.path.join(framegen_dir, "network.fgw"))
         rev = subprocess.run(["git", "-C", MIHAWKGEN, "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
         print("ps5: frame generation by PS5_MihawkGen (%s)" % (rev or "no revision"), flush=True)
     return linked
