@@ -53,6 +53,13 @@ int hos_oot_state(int *event, int *loading, int *child) {
     return 0;
 }
 int hos_oot_current_map(char *out, size_t cap) { if (out && cap) *out = 0; return 0; }
+/* (the Discord status's hearts and rupees, host/discord_rpc.c: -1 each, not known) */
+int hos_oot_stats(int *life, int *max_life, int *rupees, int *tokens, int *pieces) {
+    int *const all[] = {life, max_life, rupees, tokens, pieces};
+    for (int i = 0; i < 5; i++)
+        if (all[i]) *all[i] = -1;
+    return 0;
+}
 int hos_oot_destination(int index, const char **child, const char **adult) { (void)index, (void)child, (void)adult; return 0; }
 int hos_oot_teleport_ask(int index) { (void)index; return 0; }
 int hos_oot_age_ask(int adult) { (void)adult; return 0; }
