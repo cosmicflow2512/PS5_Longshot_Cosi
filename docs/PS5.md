@@ -51,6 +51,7 @@ Upstream's Linux build is the base: `host/` with `host/posix`'s Win32 calls, and
 | futex, gettid, /proc, /sys | `_umtx_op`, `pthread_getthreadid_np`, the console's known layout | `host/posix/win32_posix.c` |
 | A mutex's object looked up by its address at every lock (a per-thread cache, then the shared table) | found by an index kept in the game's own mutex (`HOS_MUTEX_IX`, on here; `=0` is the lookup) | `host/nn_os_sync.c` |
 | `_exit` | the shell's exit (`sceSystemServiceLoadExec("exit")`) | `host/ps5/win32_ps5.c` |
+| Why a run ended is in the log | a few lines that outlive the title, in `/app0/longshot_trace.txt`, each on the disk as it is written: the start, no picture for 2 s and the pictures' return, the memory floor closing the title, an exit the title asked for, a crash's signal with its address (the console's crash report is still made). `HOS_PS5_TRACE=0`: none | `host/ps5/trace_ps5.c` |
 
 **Why the window moved.** The console grants no address space at or above 1 TiB, RADV keeps [8, 12) GiB for its
 32-bit window and [256, 512) GiB for device memory, and the platform's heap reserves 16 GiB at 128 GiB. At 64 GiB with
