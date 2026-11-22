@@ -39,6 +39,17 @@ int hos_ps5_mkdir(const char *path, mode_t mode) {
     }
     return r;
 }
+/* (std::filesystem in the SDK's C++ library asks a path's limits of it: ReShade FX's files and the performance report,
+   v3.1.1's. The console's libc has no pathconf; its FreeBSD limits instead) */
+long pathconf(const char *path, int name) {
+    (void)path;
+    switch (name) {
+    case _PC_PATH_MAX: return 1024;
+    case _PC_NAME_MAX: return 255;
+    case _PC_LINK_MAX: return 32767;
+    default: errno = EINVAL; return -1;
+    }
+}
 /* (files made by Longshot's writers: the console has no mask to change) */
 mode_t umask(mode_t mask) { (void)mask; return 022; }
 /* (the bug report's home folder, gpu/vk/vk_bug_report.cpp: it takes none) */

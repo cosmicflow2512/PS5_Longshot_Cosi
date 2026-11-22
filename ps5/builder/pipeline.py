@@ -259,7 +259,7 @@ def link(kit, info, work, objects, lld, nm):
     with open(os.path.join(out, "local.map"), "w") as f:
         f.write("{\n    local:\n" + "".join("        %s;\n" % n for n in info.get("local_symbols", [
             "fnmatch", "isatty", "pthread_setname_np", "timegm", "syscall", "pipe2", "accept4", "posix_fadvise", "getpwuid",
-            "umask"])) + "};\n")
+            "umask", "pathconf"])) + "};\n")
     elf = os.path.join(out, "llvm-pie.elf")
     stubs = [os.path.join(kit, "lib", "stubs", n) for n in ("libSceAgc.so", "libSceAgcDriver.so")]
     sdk_lib = os.path.join(kit, "sdk", "target", "lib")
