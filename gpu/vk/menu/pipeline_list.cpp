@@ -195,6 +195,10 @@ std::string share_downloads(std::string* words) {
 #ifndef _WIN32
 /// A program of the desktop's (xdg-open, wl-copy, ...), not waited for: false when it cannot start. input: its standard input
 bool share_spawn(std::vector<std::string> argv, const std::string* input = nullptr) {
+#ifdef __PROSPERO__   // (PS5: no desktop to hand anything to, and no program to start)
+    (void)argv, (void)input;
+    return false;
+#else
     int fds[2] = {-1, -1};
     posix_spawn_file_actions_t fa;
     posix_spawn_file_actions_init(&fa);
@@ -251,6 +255,7 @@ bool share_spawn(std::vector<std::string> argv, const std::string* input = nullp
     int status = 0;
     while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {}
     return wrote && WIFEXITED(status) && WEXITSTATUS(status) == 0;
+#endif
 }
 #endif
 bool share_clipboard(const std::string& text) {

@@ -172,7 +172,9 @@ def jobs_for(rt64, gen_dir):
     # (ReShade's FX compiler and the renderer's bridge to it, gpu/vk/reshade: nx2/reshade_fx.py's jobs, as nx2/build.py adds
     # them. Its upstream files in third_party/reshade_fx are built with the renderer's flags here too: no prebuilt set)
     import reshade_fx   # noqa: E402  (nx2)
-    for _cxx, src, obj, fl, deps in reshade_fx.build_jobs("", ROOT, gen_dir, os.path.join(OUT, "obj"), vfl, vfl, b"",
+    # (ps5/include: a <malloc.h> for its symbol table, which the SDK's own refuses)
+    for _cxx, src, obj, fl, deps in reshade_fx.build_jobs("", ROOT, gen_dir, os.path.join(OUT, "obj"), vfl,
+                                                           ["-I" + os.path.join(ROOT, "ps5", "include")] + vfl, b"",
                                                            windows=False):
         out.append((src, obj, fl, vk_digest + hashlib.sha1(deps).hexdigest()))
     # (Lossless Scaling's frame generation from the player's own Lossless.dll: gpu/vk/lsfg, PS5SX2's port; RX_VK_LSFG=1)

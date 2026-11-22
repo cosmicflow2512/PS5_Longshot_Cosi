@@ -15,7 +15,9 @@
 #ifndef _WIN32
 #include <dlfcn.h>
 #include <execinfo.h>
+#ifndef __PROSPERO__   /* (PS5: no sysinfo; the console's free direct memory instead, hos_alloc_gave_up) */
 #include <sys/sysinfo.h>
+#endif
 #endif
 
 /* ---- the guest window ---------------------------------------------------------------------------------------
@@ -126,6 +128,9 @@ void hos_alloc_gave_up(size_t n, const char *what) {
 #ifdef _WIN32
     MEMORYSTATUSEX m = {.dwLength = sizeof m};
     if (GlobalMemoryStatusEx(&m)) left = m.ullAvailPageFile >> 20;
+#elif defined(__PROSPERO__)
+    uint64_t hos_ps5_direct_room(void);   /* (host/ps5/win32_ps5.c: the title's free direct memory in all) */
+    left = hos_ps5_direct_room() >> 20;
 #else
     struct sysinfo si;
     if (!sysinfo(&si)) left = ((unsigned long long)si.freeram + si.bufferram + si.freeswap) * si.mem_unit >> 20;

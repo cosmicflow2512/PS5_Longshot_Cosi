@@ -41,6 +41,37 @@ struct Seen {
 };
 /// What an exception that came out is: memory, a size past any PC's memory (a size gone wrong), or anything else
 inline Seen classify(const std::exception& e) noexcept {
+#if !defined(__GXX_RTTI) && !defined(__cpp_rtti)
+    // (built without RTTI, as the console's renderer is: no dynamic_cast nor typeid. The exception being handled, when
+    // there is one (escaped is called in its handler), by its type in a catch, which needs no RTTI; else unknown)
+    if (!std::current_exception()) return {Kind::other, "std::exception"};
+    try {
+        throw;
+    } catch (const std::bad_array_new_length&) {
+        return {Kind::size, "std::bad_array_new_length"};
+    } catch (const std::bad_alloc&) {
+        return {Kind::memory, "std::bad_alloc"};
+    } catch (const std::length_error&) {
+        return {Kind::size, "std::length_error"};
+    } catch (const std::out_of_range&) {
+        return {Kind::other, "std::out_of_range"};
+    } catch (const std::invalid_argument&) {
+        return {Kind::other, "std::invalid_argument"};
+    } catch (const std::system_error& s) {
+        const std::error_code c = s.code();
+        const bool memory = c == std::errc::not_enough_memory || c == std::errc::resource_unavailable_try_again ||
+                            std::strstr(e.what(), "thread constructor failed");
+        return {memory ? Kind::memory : Kind::other, "std::system_error"};
+    } catch (const std::bad_function_call&) {
+        return {Kind::other, "std::bad_function_call"};
+    } catch (const std::logic_error&) {
+        return {Kind::other, "std::logic_error"};
+    } catch (const std::runtime_error&) {
+        return {Kind::other, "std::runtime_error"};
+    } catch (const std::exception&) {   // (another of the standard's: its callers' handler is for std::exception alone)
+    }
+    return {Kind::other, "std::exception"};
+#else
     if (dynamic_cast<const std::bad_array_new_length*>(&e)) return {Kind::size, "std::bad_array_new_length"};
     if (dynamic_cast<const std::bad_alloc*>(&e)) return {Kind::memory, "std::bad_alloc"};
     if (dynamic_cast<const std::length_error*>(&e)) return {Kind::size, "std::length_error"};
@@ -58,6 +89,7 @@ inline Seen classify(const std::exception& e) noexcept {
     if (dynamic_cast<const std::logic_error*>(&e)) return {Kind::other, "std::logic_error"};
     if (dynamic_cast<const std::runtime_error*>(&e)) return {Kind::other, "std::runtime_error"};
     return {Kind::other, typeid(e).name()};
+#endif
 }
 
 /// What escaped does (set by mkwvk_init; a test sets its own). out_of_memory and fatal do not return

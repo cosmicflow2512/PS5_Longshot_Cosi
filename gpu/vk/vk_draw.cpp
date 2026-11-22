@@ -1871,7 +1871,11 @@ void compute_compiled_log(const ComputeCompiling& c, int64_t ms) {
     if (asked_ms >= 0) {   // (diagnosis: when it ended, by the boot clock /proc/uptime reads, to match memory samples to it)
 #ifndef _WIN32
         timespec ts{};
+#ifdef CLOCK_BOOTTIME
         clock_gettime(CLOCK_BOOTTIME, &ts);
+#else   // (PS5, FreeBSD: no boot clock by that name; the monotonic one, for the order of the lines)
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+#endif
         logf("vk: compute pipeline of %016llx: ended at %.2f after %.2f s", (unsigned long long)c.of.key, ts.tv_sec + ts.tv_nsec / 1e9,
              ms / 1000.0);
 #endif
