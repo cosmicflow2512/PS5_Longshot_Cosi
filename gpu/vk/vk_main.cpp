@@ -46,6 +46,9 @@
 #include "prepare_journal.h"   // (kExitEntryLimit: the journalled preparation's exit status for one entry past its limit)
 #include "vk_fps.h"
 #include "memory_priority.h"
+#ifdef __PROSPERO__
+extern "C" int hos_ps5_pro_mode(void);   // (host/ps5/win32_ps5.c: the title has the Pro's memory; auto_profile)
+#endif
 #ifndef LONGSHOT_ENV_H   // (env_on: the switches' one rule)
 #include "longshot_env.h"
 #endif
@@ -1929,6 +1932,9 @@ void auto_profile() {
     hw.vendor = p.vendorID == 0x10de ? ::auto_settings::NVIDIA : p.vendorID == 0x1002 ? ::auto_settings::AMD
               : p.vendorID == 0x8086 ? ::auto_settings::INTEL : ::auto_settings::OTHER;
     hw.integrated = p.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU;
+#ifdef __PROSPERO__
+    hw.ps5_pro = hos_ps5_pro_mode() != 0;
+#endif
     for (uint32_t i = 0; i < dev.memory.memoryHeapCount; i++)
         if (dev.memory.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT)
             hw.vram_mb = std::max<uint32_t>(hw.vram_mb, (uint32_t)(test_vram_bytes(dev.memory.memoryHeaps[i].size) >> 20));

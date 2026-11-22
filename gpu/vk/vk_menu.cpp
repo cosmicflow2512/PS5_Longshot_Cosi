@@ -4325,7 +4325,8 @@ void menu_init() {
         host_screen_size(&sw, &sh);   // (not known: 0 x 0, the game's 2560x1440)
         hos_output_default(sw, sh, &w, &h);
         opts.output_res = output_choice_of(w, h);
-        logf("vk: the Output resolution: none chosen, %ux%u (the game's 2560x1440, or the screen's where smaller)", w, h);
+        logf("vk: the Output resolution: none chosen, %ux%u (the game's 2560x1440, or the screen's where smaller; a PS5 Pro's "
+             "3200x1800 on a 3840x2160 screen)", w, h);
     }
     // An opt-in profile for 4 GB cards: keep existing options authoritative, but make a first run usable on
     // low-VRAM hardware without requiring the menu to render first.
