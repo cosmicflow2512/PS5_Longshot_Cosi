@@ -12,9 +12,10 @@ inline constexpr int kLeast = kBuiltIn, kMost = kLossless, kDefault = kMihawk;
 #else
 inline constexpr int kLeast = kAuto, kMost = kBuiltIn, kDefault = kAuto;
 #endif
-// (2 is FSR 3.1 FG's on this row in upstream Longshot since its 983d607b (2026-11-17), which this tree does not have yet.
-// The console's own values come after it, so a file written now means the same once the port has upstream's row. Until
-// then nothing makes frames at 2: the console's row steps over it, and a 2 from a file or a variable is kDefault)
+// (2 is FSR 3.1 FG's on this row in upstream Longshot since its 983d607b (2026-11-17), merged here with v3.1.1. The console's
+// own values come after it, so a file means the same on both. FSR 3.1 is not built for the console (no LONGSHOT_FSR): its row
+// steps over 2, and a 2 from a file or a variable is kDefault. On the PC 0 is DLSS FG now, no longer Auto: kAuto keeps its
+// number for the options files)
 /// The row's value a step from its neighbour lands on: `by` itself, or the next one that way when it is kFsr3
 constexpr int step_over(int by, int dir) { return by == kFsr3 ? by + (dir > 0 ? 1 : -1) : by; }
 /// A number from a file or a variable, as a value of this build's row

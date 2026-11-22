@@ -19,6 +19,7 @@
 #include "../hos.h"
 #include "../hos_sdl.h"
 #include "platform.h"
+#include "../../gpu/vk/compat/longshot_env.h"   /* (env_int: the switches' one rule) */
 
 PFN_vkVoidFunction vk_icdGetInstanceProcAddr(VkInstance instance, const char *name);   /* (RADV, linked in) */
 
@@ -109,7 +110,7 @@ int hos_sdl_vulkan_surface(void *window, void *instance_p, void *surface_out) {
         hos_log("ps5: display mode %ux%u at %u mHz", p->visibleRegion.width, p->visibleRegion.height, p->refreshRate);
         if ((int)p->visibleRegion.width != mode_w || (int)p->visibleRegion.height != mode_h) continue;
         /* (HOS_PS5_HZ=120: that size's 119.88 Hz mode where the screen has one, for made frames past 60 a second) */
-        const int fast = getenv("HOS_PS5_HZ") && atoi(getenv("HOS_PS5_HZ")) > 61;
+        const int fast = env_int("HOS_PS5_HZ", 0) > 61;
         const int is_fast = p->refreshRate >= 61000, has_fast = pick >= 0 && modes[pick].parameters.refreshRate >= 61000;
         if (pick < 0 || (fast ? is_fast && !has_fast : !is_fast && has_fast)) pick = (int)i;
     }

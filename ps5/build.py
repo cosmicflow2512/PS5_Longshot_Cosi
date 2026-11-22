@@ -114,7 +114,7 @@ def jobs_for(rt64, gen_dir):
     stamp = version.define(ROOT)
     for s in host:
         rel = os.path.relpath(s, HOST).replace(os.sep, "_")[:-2]
-        fl = host_fl + ([stamp] if os.path.basename(s) == "hos_main.c" else [])
+        fl = host_fl + ([stamp] if os.path.basename(s) in ("hos_main.c", "version.c") else [])   # (host/version.c: Longshot's)
         out.append((s, os.path.join(OUT, "obj", "host_" + rel + ".o"), fl, host_digest))
 
     # libopus (nn::codec's Opus decoder)
@@ -162,13 +162,19 @@ def jobs_for(rt64, gen_dir):
         rel = os.path.relpath(s, os.path.join(ROOT, "gpu")).replace(os.sep, "_")[:-4]
         lib = os.path.relpath(s, VK).split(os.sep)[0] in ("eden", "sirit")
         fl = vfl + ([shader_stamp] if os.path.basename(s) == "vk_shader.cpp" else []) + \
-            ([stamp] if os.path.basename(s) == "vk_menu.cpp" else []) + \
+            ([stamp] if os.path.basename(s) in ("vk_menu.cpp", "vk_version.cpp") else []) + \
             (["-DLONGSHOT_LSFG"] if os.path.basename(s) == "vk_framegen.cpp" else []) + \
-            (imgui_fl if os.path.basename(s) in ("vk_imgui.cpp", "vk_menu.cpp") else []) + \
+            (imgui_fl if os.path.basename(s) in IMGUI_USERS else []) + \
             (["-DHOOKSHOT_MIHAWKGEN", "-I" + os.path.join(MIHAWKGEN, "framegen", "include")]
              if HAS_MIHAWKGEN and os.path.basename(s) == "vk_framegen.cpp" else [])
         out.append((s, os.path.join(OUT, "obj", "vk_" + rel + ".o"), fl,
-                    lib_digest if lib else vk_digest + (imgui_digest if os.path.basename(s) in ("vk_imgui.cpp", "vk_menu.cpp") else "")))
+                    lib_digest if lib else vk_digest + (imgui_digest if os.path.basename(s) in IMGUI_USERS else "")))
+    # (ReShade's FX compiler and the renderer's bridge to it, gpu/vk/reshade: nx2/reshade_fx.py's jobs, as nx2/build.py adds
+    # them. Its upstream files in third_party/reshade_fx are built with the renderer's flags here too: no prebuilt set)
+    import reshade_fx   # noqa: E402  (nx2)
+    for _cxx, src, obj, fl, deps in reshade_fx.build_jobs("", ROOT, gen_dir, os.path.join(OUT, "obj"), vfl, vfl, b"",
+                                                           windows=False):
+        out.append((src, obj, fl, vk_digest + hashlib.sha1(deps).hexdigest()))
     # (Lossless Scaling's frame generation from the player's own Lossless.dll: gpu/vk/lsfg, PS5SX2's port; RX_VK_LSFG=1)
     lsfg_dir = os.path.join(VK, "lsfg")
     for f in sorted(os.listdir(lsfg_dir)):
@@ -182,6 +188,10 @@ def jobs_for(rt64, gen_dir):
         for s in MIHAWKGEN_SOURCES:
             out.append((s, os.path.join(OUT, "obj", "mihawkgen_" + os.path.basename(s)[:-4] + ".o"), mfl, mdigest))
     return out
+
+
+# (the files that draw with Dear ImGui and take its flags: nx2/build.py's imgui_users)
+IMGUI_USERS = ("vk_imgui.cpp", "vk_menu.cpp", "vk_crash_window.cpp", "reshade.cpp")
 
 
 def key_of(src, flags, digest):

@@ -3,7 +3,8 @@
 Programs that follow a pointer no bound buffer holds read it through this table (spirv_emit_context.cpp guest_lookup,
 kGuestPagesBase...), which the back end fills as pools come and go (vk_memory.cpp guest_pages_set, page_table_census.h
 kPageWindows). The windows must be where host/hos.h puts the guest's heap (window one) and the top of its address space,
-where address regions are handed out (window two). The console's port moved the heap from 64 GiB to 16 GiB and the top
+where address regions are handed out (window two), and NVN's virtual pools (window three: GPU addresses from 1 TB,
+host/nvn_native.c VBASE, the same on both). The console's port moved the heap from 64 GiB to 16 GiB and the top
 from 512 GiB to 64 GiB; with the PC's windows no page was ever mapped there and every followed pointer read 0 (OoT's
 foliage culling then left one of its two list sets empty: the Sacred Meadow's tree crowns every other frame).
 tests/test_page_table_census.py holds the PC's windows and the census; this holds each platform's against host/hos.h.
@@ -17,7 +18,7 @@ import re
 import subprocess
 import tempfile
 ROOT = Path(__file__).resolve().parents[1]
-NAMES = ('kGuestPagesBase', 'kGuestPagesBytes', 'kGuestPagesBase2', 'kGuestPagesBytes2')
+NAMES = ('kGuestPagesBase', 'kGuestPagesBytes', 'kGuestPagesBase2', 'kGuestPagesBytes2', 'kGuestPagesBase3', 'kGuestPagesBytes3')
 
 
 def layout(hos, ps5):
@@ -36,7 +37,7 @@ def layout(hos, ps5):
 
 
 def shader_windows(emit, ps5):
-    """The four constants the translated shaders are made with on that platform: the PC's first, under #ifndef __PROSPERO__,
+    """The six constants the translated shaders are made with on that platform: the PC's first, under #ifndef __PROSPERO__,
     the console's under its #else. With no such block both platforms have the same."""
     at = emit.index('constexpr unsigned long long kGuestPagesBase =')
     opened = emit.rfind('#ifndef __PROSPERO__', 0, at)
@@ -60,20 +61,24 @@ using namespace mkwvk;
 #define CHECK(x) do { if (!(x)) { std::fprintf(stderr, "FAIL %d %s\n", __LINE__, #x); std::exit(1); } } while (0)
 int main() {
     const uint64_t heap = HEAP_BASE, end = SPACE_END;
-    CHECK(sizeof kPageWindows / sizeof kPageWindows[0] == 2);
+    CHECK(sizeof kPageWindows / sizeof kPageWindows[0] == 3);
     const PageWindow& a = kPageWindows[0];
     const PageWindow& b = kPageWindows[1];
+    const PageWindow& c = kPageWindows[2];
     CHECK(a.base == heap);                    // (window one: from the heap's base)
     CHECK(b.base + b.bytes == end);           // (window two: up to the end of the guest's space)
     CHECK(a.base + a.bytes <= b.base);        // (apart)
+    CHECK(c.base == VBASE && c.base >= end);  // (window three: NVN's virtual pools, past the guest's space)
     // (the shaders' own constants, which index the same table)
-    CHECK(a.base == S_BASE && a.bytes == S_BYTES && b.base == S_BASE2 && b.bytes == S_BYTES2);
-    CHECK(a.first == 0 && b.first == a.bytes >> 12);
-    CHECK(kPageTableEntries == (a.bytes + b.bytes) >> 12);
+    CHECK(a.base == S_BASE && a.bytes == S_BYTES && b.base == S_BASE2 && b.bytes == S_BYTES2 && c.base == S_BASE3 &&
+          c.bytes == S_BYTES3);
+    CHECK(a.first == 0 && b.first == a.bytes >> 12 && c.first == (a.bytes + b.bytes) >> 12);
+    CHECK(kPageTableEntries == (a.bytes + b.bytes + c.bytes) >> 12);
     CHECK(page_table_outside(heap, heap + 0x1000) == 0);
     CHECK(page_table_outside(heap - 0x1000, heap) == 0x1000);
     CHECK(page_table_outside(end - 0x1000, end) == 0);
     CHECK(page_table_outside(end, end + 0x1000) == 0x1000);
+    CHECK(page_table_outside(VBASE, VBASE + 0x1000) == 0);
 #ifdef __PROSPERO__
     // (addresses the console's log gave OoT's culling buffers and a region near the top, 2026-11-16)
     CHECK(page_table_outside(0x578860000ull, 0x578861000ull) == 0);
@@ -93,6 +98,10 @@ def main():
     a = parser.parse_args()
     vk = a.source / 'gpu/vk'
     hos = (a.source / 'host/hos.h').read_text(encoding='utf-8')
+    m = re.search(r'^#define VBASE (0x[0-9a-fA-F]+)ull', (a.source / 'host/nvn_native.c').read_text(encoding='utf-8'), re.M)
+    if not m:
+        raise SystemExit('FAIL: host/nvn_native.c no longer defines VBASE as this test reads it')
+    vbase = int(m.group(1), 16)
     emit = (vk / 'eden/shader_recompiler/backend/spirv/spirv_emit_context.cpp').read_text(encoding='utf-8')
     with tempfile.TemporaryDirectory(prefix='page-windows-') as tmp:
         folder = Path(tmp)
@@ -105,12 +114,14 @@ def main():
             exe = folder / ('fixture_ps5' if ps5 else 'fixture_pc')
             cmd = [a.cxx, '-std=c++20', '-Wall', '-Wextra', '-Werror', '-I' + str(vk), '-DHEAP_BASE=%dull' % heap,
                    '-DSPACE_END=%dull' % end, '-DS_BASE=%dull' % s['kGuestPagesBase'], '-DS_BYTES=%dull' % s['kGuestPagesBytes'],
-                   '-DS_BASE2=%dull' % s['kGuestPagesBase2'], '-DS_BYTES2=%dull' % s['kGuestPagesBytes2']]
+                   '-DS_BASE2=%dull' % s['kGuestPagesBase2'], '-DS_BYTES2=%dull' % s['kGuestPagesBytes2'],
+                   '-DS_BASE3=%dull' % s['kGuestPagesBase3'], '-DS_BYTES3=%dull' % s['kGuestPagesBytes3'], '-DVBASE=%dull' % vbase]
             cmd += (['-D__PROSPERO__'] if ps5 else []) + [str(cpp), '-o', str(exe)]
             subprocess.run(cmd, cwd=folder, check=True)
             if subprocess.run([str(exe)]).returncode:
                 raise SystemExit('FAIL: %s: the page table\'s windows are not its guest layout (heap %#x, end %#x)' % (who, heap, end))
-            print('PASS: %s: the table maps the heap from %#x and the 4 GB below %#x' % (who, heap, end))
+            print('PASS: %s: the table maps the heap from %#x, the %d GB below %#x and NVN\'s pools from %#x' %
+                  (who, heap, s['kGuestPagesBytes2'] >> 30, end, vbase))
 
 
 if __name__ == '__main__':

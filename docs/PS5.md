@@ -152,6 +152,22 @@ The code is in `gpu/vk/lsfg`: 26 files from [PS5SX2](https://github.com/Swordpdf
 [lsfg-vk](https://github.com/PancakeTAS/lsfg-vk). `gpu/vk/lsfg/PROVENANCE.md` has the revisions and what was changed
 here. Not built on Windows or Linux: `ps5/build.py` alone compiles the folder.
 
+## The port's switches
+
+Upstream's switches are in [docs/dev/reference/switches.md](dev/reference/switches.md). These are the port's own, or
+read differently on the console:
+
+| Switch | What it does |
+| --- | --- |
+| `RX_VK_FRAMEGEN_MULT=<1..8>` | Frame generation for this run, over the options file: 1 is Auto (a frame for each of the display's refreshes), as on the PC 2 to 8 |
+| `RX_VK_FRAMEGEN_BY_CYCLE=<seconds>` | The Frame generation by row moves on to its next value every that many seconds, for a run with no one at the menu |
+| `RX_VK_FG_AUTO_ROOM_MB=<n>`, `RX_VK_FG_LEVEL_CYCLE=<seconds>` | The free memory under which frame generation steps down (default: the textures' reserve); its three steps taken by the clock instead, for a test |
+| `RX_VK_LSFG=0`, `RX_VK_LSFG_DIR=<folder>`, `RX_VK_LSFG_FLOW=<0.25..1>` | Lossless Scaling's frames not offered, as without the file; where `Lossless.dll` is looked for first; the optical flow's share of the frame's size (default 0.5 above 1920x1080, else 1) |
+| `RX_VK_KEEP_MODULES=1` | The shader modules of the programs read at start kept: on the console they are let go when play begins, always (`gpu/vk/vk_draw.cpp` `pipeline_cache_play`; no `/proc/meminfo` there, and its 16 GB are under the 20 GB line) |
+| `RX_VK_JOB_WORKERS=<1..8>` | The background workers (`RX_VK_WORKERS` too). Two on the console, not the PC's rule: each translation in flight holds its own working memory (`gpu/vk/device_policy.h` `workers`) |
+| `HOS_SHADOW_BUCKET=<step>` | The storage a character's shadow map reserves (`host/shadow_slot.h`): the next multiple of the step up (384 by default), so a map a few pixels larger does not move every render target after it; `0`: every texture its own storage |
+| `LONGSHOT_SHADER_STORE=<folder>` | Upstream's shared shader store, which the console leaves off (`gpu/vk/spirv_pack.h` `default_dir`): its every entry is a write and a flush, ~60 ms each in the title folder |
+
 ## Open questions
 
 - **The foliage fault's cause (answered 2026-11-16).** A program that follows a pointer no bound buffer holds reads it
@@ -159,7 +175,10 @@ here. Not built on Windows or Linux: `ps5/build.py` alone compiles the folder.
   0x7f00000000 (spirv_emit_context.cpp `kGuestPages*`, gpu/vk/page_table_census.h `kPageWindows`). The console's guest
   window is 64 GiB, with its heap from 0x400000000 (host/hos.h): no address of the game's was in either window, no page
   was mapped and every followed pointer read 0, which left the culling pass's lists empty. Under `__PROSPERO__` the windows
-  are now 8 GB from 0x400000000 and 4 GB from 0xf00000000 (tests/test_ps5_page_windows.py). Binding from multiples of 256
+  are now 8 GB from 0x400000000 and 4 GB from 0xf00000000 (tests/test_ps5_page_windows.py). Since Longshot v3.1.1 the PC's
+  second window is 16 GB below the guest window's end and a third, 4 GB from 1 TB, covers NVN's virtual pools: on the console
+  the second is 16 GB from 0xc00000000 and the third the PC's own (the table grows from 24 to 56 MB). Not yet run on the
+  console. Binding from multiples of 256
   (gpu/vk/vk_main.cpp) had taken the fault away in Kokiri Forest only: in the Sacred Meadow, with the camera on the crowns,
   `RX_VK_FLASH` counted 400 flashes in 400 presents before the windows changed and 0 in about 2,000 after. Not retested:
   the console's windows with the binding from multiples of 256 taken out.
