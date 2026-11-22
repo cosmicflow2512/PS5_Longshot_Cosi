@@ -82,5 +82,40 @@ template <class T> struct atomic_ref {
 };
 }   // namespace std
 #endif
+/* std::from_chars for float and double, which the SDK's C++ library does not have (its <charconv> has the integers'
+   alone): ReShade FX's lexer and its preset reader (third_party/reshade_fx, gpu/vk/reshade/fx_runtime.cpp) read numbers
+   with it. strtof/strtod on a copy, which ends where the number does, as from_chars does; a leading '+' or space, which
+   from_chars refuses, is refused too */
+#include <charconv>
+#include <cerrno>
+#include <cstdlib>
+#include <cstring>
+#include <system_error>
+#if !defined(__cpp_lib_to_chars)
+namespace hos_ps5_charconv {
+template <class T> inline std::from_chars_result parse(const char *first, const char *last, T &value) {
+    char buf[128];
+    const size_t n = (size_t)(last - first) < sizeof buf - 1 ? (size_t)(last - first) : sizeof buf - 1;
+    if (!n || first[0] == '+' || first[0] == ' ' || first[0] == '\t') return {first, std::errc::invalid_argument};
+    memcpy(buf, first, n);
+    buf[n] = 0;
+    char *end = buf;
+    errno = 0;
+    const T v = sizeof(T) == sizeof(float) ? (T)strtof(buf, &end) : (T)strtod(buf, &end);
+    if (end == buf) return {first, std::errc::invalid_argument};
+    if (errno == ERANGE) return {first + (end - buf), std::errc::result_out_of_range};
+    value = v;
+    return {first + (end - buf), std::errc{}};
+}
+}   // namespace hos_ps5_charconv
+namespace std {
+inline from_chars_result from_chars(const char *first, const char *last, float &value) {
+    return hos_ps5_charconv::parse(first, last, value);
+}
+inline from_chars_result from_chars(const char *first, const char *last, double &value) {
+    return hos_ps5_charconv::parse(first, last, value);
+}
+}   // namespace std
+#endif
 #endif
 #endif

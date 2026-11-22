@@ -100,6 +100,7 @@ Image CreateImage(const Device& device, const VkImageCreateInfo& info)
 		return {};
 	VmaAllocationCreateInfo aci = {};
 	aci.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+	aci.priority = 0.5f;   // (longshot: the driver's own, as memory made without one: tests/test_memory_priority.py)
 	VkImage image = VK_NULL_HANDLE;
 	VmaAllocation allocation = VK_NULL_HANDLE;
 	const VkResult res = vmaCreateImage(device.allocator, &info, &aci, &image, &allocation, nullptr);
@@ -120,6 +121,7 @@ Buffer CreateUploadBuffer(const Device& device, VkDeviceSize size, VkBufferUsage
 	const VkBufferCreateInfo bci = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, nullptr, 0, size, usage, VK_SHARING_MODE_EXCLUSIVE, 0, nullptr};
 	VmaAllocationCreateInfo aci = {};
 	aci.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
+	aci.priority = 0.5f;
 	aci.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
 	VkBuffer buffer = VK_NULL_HANDLE;
 	VmaAllocation allocation = VK_NULL_HANDLE;

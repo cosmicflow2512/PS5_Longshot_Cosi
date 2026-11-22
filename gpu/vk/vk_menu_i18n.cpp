@@ -22,6 +22,7 @@
 #include "menu_i18n.h"
 #include "vk_menu.h"
 #include "vk_paths.h"
+#include "../../host/hos_atomic_file.h"   // (language.txt is written whole or not at all)
 
 namespace mkwvk::i18n {
 
@@ -142,6 +143,19 @@ constexpr GameLang kGameLangs[] = {
     {"pt-BR", "Português (Brasil)"}, {"nl", "Nederlands"}, {"pl", "Polski"}, {"ru", "Русский"}, {"ja", "日本語"},
     {"ko", "한국어"}, {"zh-Hans", "简体中文"}, {"zh-Hant", "繁體中文"}};
 constexpr int kGameLangCount = sizeof kGameLangs / sizeof kGameLangs[0];
+/// The names the Language rows showed with letters past Latin (a lead byte from U+0280 on: Cyrillic, Hangul, kana, Han), for
+/// names_shown_since: each seen once (by the tables' pointers, which live for the process), handed out once
+std::mutex shown_mu;
+std::vector<const char*> shown_seen;
+std::vector<std::pair<std::string, std::string>> shown_new;
+void shown(const char* code, const char* name) {
+    bool latin = true;
+    for (const char* p = name; *p; p++) latin &= (unsigned char)*p < 0xCA;
+    if (latin) return;
+    std::lock_guard<std::mutex> lock(shown_mu);
+    if (std::find(shown_seen.begin(), shown_seen.end(), name) != shown_seen.end()) return;
+    shown_seen.push_back(name), shown_new.emplace_back(code, name);
+}
 bool same_code(const std::string& a, const char* b) {   // (as host/nn_applet.c: pt-br is pt-BR)
     const size_t n = strlen(b);
     if (a.size() != n) return false;
@@ -201,7 +215,15 @@ std::string& game_language_saved() {
 const std::string& game_language() { return game_language_started(); }
 int game_lang_count() { return kGameLangCount; }
 const char* game_lang_code(int index) { return kGameLangs[std::clamp(index, 0, kGameLangCount - 1)].code; }
-const char* game_lang_name(int index) { return kGameLangs[std::clamp(index, 0, kGameLangCount - 1)].name; }
+const char* game_lang_name(int index) {
+    const GameLang& g = kGameLangs[std::clamp(index, 0, kGameLangCount - 1)];
+    shown(g.code, g.name);
+    return g.name;
+}
+std::vector<std::pair<std::string, std::string>> names_shown_since() {
+    std::lock_guard<std::mutex> lock(shown_mu);
+    return std::exchange(shown_new, {});
+}
 int game_lang_index() {
     for (int i = 0; i < kGameLangCount; i++)
         if (same_code(game_language_saved(), kGameLangs[i].code)) return i;
@@ -222,12 +244,11 @@ bool set_game_language(int index) {
         l = std::string(code) + "\n", set = true;
     }
     if (!set) lines.push_back(std::string(code) + "\n");
-    // (written whole or not at all: a folder that cannot be written keeps language.txt, and the row goes back to it)
-    FILE* f = fopen(language_txt().c_str(), "w");
-    if (!f) return false;
-    bool ok = true;
-    for (const auto& l : lines) ok = fputs(l.c_str(), f) >= 0 && ok;
-    ok = fclose(f) == 0 && ok;
+    // (written whole or not at all: beside language.txt and moved over it, so a kill, or a folder that cannot be written, keeps
+    // language.txt as it was, and the row goes back to it)
+    std::string text;
+    for (const auto& l : lines) text += l;
+    const bool ok = hos_atomic_write(language_txt().c_str(), text.data(), text.size());
     if (ok) game_language_saved() = code;
     return ok;
 }
@@ -257,7 +278,11 @@ int plural(int n) {
     return n == 1 ? 0 : 1;
 }
 int lang_count() { return menu_i18n::kLangCount; }
-const char* lang_name(int index) { return menu_i18n::kLangs[std::clamp(index, 0, menu_i18n::kLangCount - 1)].name; }
+const char* lang_name(int index) {
+    const menu_i18n::Lang& l = menu_i18n::kLangs[std::clamp(index, 0, menu_i18n::kLangCount - 1)];
+    shown(l.code, l.name);
+    return l.name;
+}
 
 std::string tr_text(const std::string& s) {
     const int lang = lang_now();

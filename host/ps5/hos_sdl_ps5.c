@@ -19,6 +19,7 @@
 #include "../hos.h"
 #include "../hos_sdl.h"
 #include "platform.h"
+#include "../../gpu/vk/compat/longshot_env.h"   /* (env_int: the switches' one rule) */
 
 PFN_vkVoidFunction vk_icdGetInstanceProcAddr(VkInstance instance, const char *name);   /* (RADV, linked in) */
 
@@ -63,6 +64,14 @@ void *hos_sdl_window(const char *title, int width, int height) {
     return &window_token;
 }
 void hos_sdl_fullscreen(void *window, int on) { (void)window, (void)on; }
+/* (one display, always the whole of it: no monitors to list or choose) */
+int hos_sdl_monitor_list(void *window, struct MkwVkMonitor *out, uint32_t *tokens, int cap) {
+    (void)window, (void)out, (void)tokens, (void)cap;
+    return 0;
+}
+uint32_t hos_sdl_window_display(void *window) { (void)window; return UINT32_MAX; }
+int hos_sdl_fullscreen_target(void *window, int on, uint32_t token) { (void)window, (void)on, (void)token; return 0; }
+int hos_sdl_is_fullscreen(void *window) { (void)window; return 1; }
 void hos_sdl_relative_mouse(void *window, int on) { (void)window, (void)on; }
 int hos_sdl_desktop_size(int *width, int *height) {
     mode_wanted();
@@ -109,7 +118,7 @@ int hos_sdl_vulkan_surface(void *window, void *instance_p, void *surface_out) {
         hos_log("ps5: display mode %ux%u at %u mHz", p->visibleRegion.width, p->visibleRegion.height, p->refreshRate);
         if ((int)p->visibleRegion.width != mode_w || (int)p->visibleRegion.height != mode_h) continue;
         /* (HOS_PS5_HZ=120: that size's 119.88 Hz mode where the screen has one, for made frames past 60 a second) */
-        const int fast = getenv("HOS_PS5_HZ") && atoi(getenv("HOS_PS5_HZ")) > 61;
+        const int fast = env_int("HOS_PS5_HZ", 0) > 61;
         const int is_fast = p->refreshRate >= 61000, has_fast = pick >= 0 && modes[pick].parameters.refreshRate >= 61000;
         if (pick < 0 || (fast ? is_fast && !has_fast : !is_fast && has_fast)) pick = (int)i;
     }
@@ -170,13 +179,31 @@ static void audio_fill(int16_t *frames, int count, void *user) {
             }
         }
 }
-int hos_sdl_audio_open(int freq, int channels, int s16, void (*pull)(void *user, uint8_t *out, int len), void *user) {
+/* (one stream: the system user's main port. The device is the default's whatever is asked (the console has no other
+   output here: hos_sdl_output_count), frames the port's own grain. A handle while it plays, NULL when it did not open) */
+static int audio_token;
+void *hos_sdl_audio_open(unsigned device, int freq, int channels, int s16, int frames,
+                         void (*pull)(void *user, uint8_t *out, int len), void *user) {
+    (void)device, (void)frames;
     if (freq != 48000) hos_log("ps5: the game's sound is %d Hz, played as 48000", freq);
-    if (channels < 1 || channels > 8) return 0;
+    if (channels < 1 || channels > 8) return NULL;
     audio_pull = pull, audio_user = user, audio_channels = channels, audio_s16 = s16;
-    return audio_start(audio_fill, NULL);
+    return audio_start(audio_fill, NULL) ? &audio_token : NULL;
 }
+void hos_sdl_audio_close(void *audio) {   /* (the thread joined before the caller frees what pull uses) */
+    if (audio == &audio_token) audio_stop();
+}
+int hos_sdl_audio_alive(void *audio) { return audio == &audio_token; }
 int hos_sdl_audio_channels(void) { return 2; }
+/* (the outputs: none to choose, only the default; no controller speaker) */
+int hos_sdl_output_count(void) { return 0; }
+int hos_sdl_output_info(int index, char *id, int id_capacity, char *name, int name_capacity) {
+    (void)index, (void)id, (void)id_capacity, (void)name, (void)name_capacity;
+    return 0;
+}
+int hos_sdl_output_resolve(const char *id) { (void)id; return -1; }
+int hos_sdl_output_channels(int index) { (void)index; return 0; }
+int hos_sdl_pad_audio_endpoint(void *pad) { (void)pad; return -1; }
 
 /* ---- microphones: none ---- */
 int hos_sdl_mic_list(uint32_t *ids, char (*names)[128], int max) { (void)ids, (void)names, (void)max; return 0; }
@@ -240,3 +267,15 @@ void hos_sdl_pad_log_connection(void *pad, int motion, int steam) { (void)pad, (
 int hos_sdl_knows_steam_pads(void) { return 0; }
 uint16_t hos_sdl_pad_vendor(void *pad) { (void)pad; return 0x054c; }   /* (Sony: the DualSense) */
 uint64_t hos_sdl_pad_steam_handle(void *pad) { (void)pad; return 0; }
+uint16_t hos_sdl_pad_product(void *pad) { (void)pad; return 0; }   /* (not known through scePad) */
+int hos_sdl_pad_wireless(void *pad) { (void)pad; return -1; }
+int hos_sdl_pad_rumble_triggers(void *pad, uint16_t left, uint16_t right, uint32_t ms) {
+    (void)pad, (void)left, (void)right, (void)ms;
+    return 0;
+}
+const char *hos_sdl_pad_path(void *pad) { (void)pad; return ""; }
+int hos_sdl_hid_can(void) { return 0; }
+void *hos_sdl_hid_open(const char *path) { (void)path; return NULL; }
+int hos_sdl_hid_write(void *hid, const void *data, int size) { (void)hid, (void)data, (void)size; return -1; }
+void hos_sdl_hid_close(void *hid) { (void)hid; }
+int hos_sdl_pad_headphones(void *pad) { (void)pad; return -1; }

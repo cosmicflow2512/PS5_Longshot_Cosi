@@ -34,6 +34,8 @@ def block(source, marker):
 
 def define(source, name):
     """The literal a header gives a name (HOS_SPACE_END has a second, web-only definition that is a variable)"""
+    # (the PC's: a header's console branches, #ifdef __PROSPERO__ up to its #else, are left out: host/hos.h's PS5 window)
+    source = re.sub(r"^#ifdef __PROSPERO__\n(?:(?!^#(?:if|endif)).*\n)*?#else\n", "", source, flags=re.M)
     found = re.findall(r"^#define %s (\(?[0-9][0-9A-Za-z<> ]*\)?)" % name, source, re.M)
     assert len(found) == 1, (name, found)
     return "#define %s %s" % (name, found[0])

@@ -18,6 +18,8 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include "../gpu/vk/compat/longshot_env.h"
+#include "../gpu/vk/spirv_pack.h"
 
 #define CHECK(c) do { if (!(c)) { std::fprintf(stderr, "FAIL line %d: %s\n", __LINE__, #c); std::exit(1); } } while (0)
 
@@ -66,6 +68,10 @@ struct Info {
 
 namespace fallback_size {
 inline uint32_t spirv_phis(const uint32_t* words, size_t n) { return n ? words[0] : 0; }
+inline uint32_t spirv_calls(const uint32_t*, size_t) { return 0; }
+}
+namespace fallback_lanes {
+inline bool spirv_lane_free(const uint32_t*, size_t) { return false; }
 }
 
 namespace mkwvk {
@@ -109,9 +115,17 @@ std::unordered_map<uint64_t, std::vector<DiskRecord>> disk_records;
 std::unordered_map<uint64_t, std::vector<DiskRecord>> disk_taken;
 FILE* disk_out = nullptr;
 FILE* disk_idx = nullptr;
+constexpr size_t kDiskHold = 0;   // (vk_progcache.cpp's, as off the console: nothing held)
+std::atomic<size_t> disk_held{0};
+int64_t disk_end = -1;
 bool disk_listing = true;
 bool disk_on = true;
 bool disk_zstd = false;
+// (the shader store, as vk_progcache.cpp has it: off here, the stages' code read from the file)
+spirv_pack::Store store;
+bool store_on = false;
+constexpr uint64_t kStoreWords = 1ull << 63;
+constexpr int64_t kInStore = 1ll << 62;
 std::atomic<int64_t> st_cache_hits{0};
 constexpr uint32_t kCompressedKind = 16;
 constexpr size_t kZstdHead = 20;
@@ -123,6 +137,7 @@ std::unordered_map<uint64_t, std::vector<std::unique_ptr<Program>>> programs;
 void disk_init() {}
 void programs_load_wait(uint64_t) {}
 void module_id_learned(uint64_t, uint64_t, VkShaderModule) {}
+void descriptor_arrays_note(const Program&) {}   // (the census of indexed descriptor arrays, vk_programs.cpp: none here)
 bool env_on(const char*) { return false; }
 #define PROF_EXACT() ((void)0)
 

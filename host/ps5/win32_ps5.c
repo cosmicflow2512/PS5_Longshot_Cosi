@@ -21,6 +21,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+
+#include "../../gpu/vk/compat/longshot_env.h"   /* (env_on: the switches' one rule) */
 #include <sys/types.h>
 #include <sys/umtx.h>
 
@@ -513,8 +515,8 @@ static void *thread_trampoline(void *p) {
 static size_t stack_cap(void) {
     static size_t cap;
     if (!cap) {
-        const char *e = getenv("HOS_PS5_STACK_MB");
-        cap = (size_t)(e && atoi(e) > 0 ? atoi(e) : 16) << 20;
+        const int mb = env_int("HOS_PS5_STACK_MB", 16);
+        cap = (size_t)(mb > 0 ? mb : 16) << 20;
     }
     return cap;
 }
@@ -1194,7 +1196,7 @@ static uint64_t zero_units_now(uint64_t *ahead) {
 #include <sys/resource.h>
 static void *cpu_meter(void *unused) {
     (void)unused;
-    if (getenv("HOS_PS5_ZERO_SCAN")) {
+    if (env_on("HOS_PS5_ZERO_SCAN")) {
         uint8_t *marks = calloc(GUEST_UNITS, 1);
         pthread_mutex_lock(&window_lock);
         unit_ahead = marks;
@@ -1222,7 +1224,7 @@ static void *cpu_meter(void *unused) {
             pthread_mutex_lock(&window_lock);
             const uint64_t kept = (uint64_t)free_count * UNIT, ahead = (uint64_t)(block_end - block_next);
             pthread_mutex_unlock(&window_lock);
-            if (getenv("HOS_PS5_ZERO_SCAN")) {
+            if (env_on("HOS_PS5_ZERO_SCAN")) {
                 const double z0 = now_ms();
                 uint64_t ahead = 0;
                 const uint64_t zero = zero_units_now(&ahead);

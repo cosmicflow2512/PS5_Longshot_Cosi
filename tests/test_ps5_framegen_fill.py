@@ -14,7 +14,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def main():
     host = (ROOT / "host" / "hos_main.c").read_text(encoding="utf-8")
-    menu = (ROOT / "gpu" / "vk" / "vk_menu.cpp").read_text(encoding="utf-8")
+    # (the menu, and its Frame generation module since v3.1.1: gpu/vk/menu/framegen.cpp)
+    menu = "".join((ROOT / "gpu" / "vk" / f).read_text(encoding="utf-8") for f in ("vk_menu.cpp", "menu/framegen.cpp"))
     header = (ROOT / "gpu" / "vk" / "vk_menu.h").read_text(encoding="utf-8")
     console = re.search(r"#ifdef __PROSPERO__[^\n]*\n\s*int framegen = (\d+);\n#else\n\s*int framegen = (\d+);\n#endif", header)
     saved = re.search(r'fprintf\(f, "options_version=(\d+)\\n"\);', menu[menu.index("void save() {"):])

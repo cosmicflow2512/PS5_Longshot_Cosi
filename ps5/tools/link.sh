@@ -38,7 +38,7 @@ source "$vulkan/tools/radv-link.sh"
 radv_link_recipe "$vulkan" "$sdk" "$archive" || exit 2
 # The libc calls host/ps5/win32_ps5.c defines because no module a title loads exports them (fnmatch, isatty,
 # pthread_setname_np, timegm): kept inside the executable, which may export nothing
-printf '{\n    local:\n        fnmatch;\n        isatty;\n        pthread_setname_np;\n        timegm;\n        syscall;\n        pipe2;\n        accept4;\n        posix_fadvise;\n        getpwuid;\n        umask;\n};\n' > "$work/link/local.map"
+printf '{\n    local:\n        fnmatch;\n        isatty;\n        pthread_setname_np;\n        timegm;\n        syscall;\n        pipe2;\n        accept4;\n        posix_fadvise;\n        getpwuid;\n        umask;\n        pathconf;\n};\n' > "$work/link/local.map"
 start=$SECONDS
 link() {
 "$sdk/bin/prospero-lld" "${radv_linker_script[@]}" --eh-frame-hdr "${radv_link_flags[@]}" "$@" \
