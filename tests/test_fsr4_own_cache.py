@@ -82,6 +82,8 @@ def body(text, head):
 
 def own_file():
     fsr4 = (ROOT / "gpu/vk/vk_fsr4.cpp").read_text(encoding="utf-8")
+    if fsr4.startswith("#ifdef __PROSPERO__"):   # (the PS5's own FSR 4.1.2 backend comes first, then #else the PC's: this is the PC's)
+        fsr4 = fsr4[fsr4.index("\n#else\n"):]
     build = body(fsr4, "void build_unrolled(")
     if "shared_compute_pipeline(" in build or "pipeline_cache_save_play()" in build:
         raise SystemExit("vk_fsr4.cpp: the unrolled layers are built into the translator's pipeline cache, whose files a new "

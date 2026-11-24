@@ -299,6 +299,14 @@ void fsr4_probe() {
 }
 void fsr4_close() {}
 bool fsr4_wants_descriptor_buffer() { return false; }
+// (v3.2.0's model row and --prepare-shaders warm-up) The PS5 runs FSR 4.1.2's INT8 network only (Lite), from the shaders
+// bundled under /app0/fsr4: there is no model to choose, so the row stays hidden (fsr4_lite_available false:
+// upscaler_rows.h fsr4_model_shown) and the env switch is not read; nothing to warm up before gameplay
+int fsr4_model_env() { return -1; }
+Fsr4Model fsr4_model() { return FSR4_MODEL_LITE; }
+bool fsr4_lite_available() { return false; }
+void fsr4_set_model(Fsr4Model) {}
+void fsr4_prepare_shaders() {}
 
 }   // namespace mkwvk
 #else
