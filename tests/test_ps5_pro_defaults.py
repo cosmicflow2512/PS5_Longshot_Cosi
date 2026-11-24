@@ -97,6 +97,8 @@ def main():
                 failed.append(name)
     win32 = (ROOT / "host" / "ps5" / "win32_ps5.c").read_text(encoding="utf-8")
     menu = (ROOT / "gpu" / "vk" / "vk_menu.cpp").read_text(encoding="utf-8")
+    # (Longshot v3.2.0: the Auto preset's rows in the Insert menu's module, gpu/vk/menu/preset.cpp, #1633)
+    menu += (ROOT / "gpu" / "vk" / "menu" / "preset.cpp").read_text(encoding="utf-8")
     main_cpp = (ROOT / "gpu" / "vk" / "vk_main.cpp").read_text(encoding="utf-8")
     mode = block(win32, "int hos_ps5_pro_mode(void) {")
     checks = [

@@ -48,6 +48,8 @@ static int guest_reads;
 static void *gp(uint64_t a) { guest_reads++; return guest + a; }
 #define GP(a) gp(a)
 static void hos_vcore_checkpoint(void) {}
+static int obj_cache_due;   /* (Longshot v3.2.0's object cache log: off here) */
+static void obj_cache_flush(void) {}
 static Obj pool[64];
 static int npool, lookups;
 /* (the table: one object an address and kind, a new one where the address now holds another kind) */
