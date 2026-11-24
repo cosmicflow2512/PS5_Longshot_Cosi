@@ -23,7 +23,7 @@ def main():
     hos_h = (ROOT / "host" / "hos.h").read_text(encoding="utf-8")
     mem = (ROOT / "host" / "hos_mem.c").read_text(encoding="utf-8")
     ps5 = hos_h[hos_h.index("#ifdef __PROSPERO__\n/* (PS5) 64 GiB of the 39-bit space"):]
-    space = int(re.search(r"#define HOS_GUEST_SPACE (0x[0-9A-Fa-f]+)ULL", ps5[:ps5.index("#else")]).group(1), 16)
+    space = int(re.search(r"#define HOS_GUEST_SPACE \(?\+?(0x[0-9A-Fa-f]+)ULL", ps5[:ps5.index("\n#else")]).group(1), 16)
     given = re.search(r'DIRTY_PAGES = \["-DA64_DIRTY_PAGES=\(1ull<<(\d+)\)"\]', build)
     pages = 1 << int(given.group(1)) if given else 0
     jobs = build[build.index("def jobs_for(rt64, gen_dir):"):]
