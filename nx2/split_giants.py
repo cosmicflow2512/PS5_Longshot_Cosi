@@ -211,7 +211,9 @@ def locals_of(body_lines):
 
 
 REG_T, FLAG_T = "uint64_t", "uint8_t"
-DIRECT_IF = "#if __has_attribute(preserve_none) && __has_attribute(musttail)"
+# (__PROSPERO__: the PS5's Clang knows preserve_none, so __has_attribute is 1, but refuses it for x86_64-sie-ps5:
+# "calling convention is not supported for this target"; there the pieces go through f_'s loop)
+DIRECT_IF = "#if __has_attribute(preserve_none) && __has_attribute(musttail) && !defined(__PROSPERO__)"
 DIRECT_ARGS = 12   # (preserve_none's argument registers on x86-64, Windows and Linux alike; more go on the stack)
 
 
