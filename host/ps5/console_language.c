@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include "../../gpu/vk/compat/longshot_env.h"   /* (env_int, env_on: the switches' one rule) */
 
 int sceSystemServiceParamGetInt(int32_t param_id, int32_t *value);
 #define SYSTEM_PARAM_LANG 1   /* (SCE_SYSTEM_SERVICE_PARAM_ID_LANG) */
@@ -23,8 +24,7 @@ const char *hos_ps5_console_language(int *id) {
     int32_t lang = -1;
     if (sceSystemServiceParamGetInt(SYSTEM_PARAM_LANG, &lang) < 0) lang = -1;
     /* (HOS_PS5_LANG_ID=<number>: a test run's console language, to see another one's answer without changing the console's) */
-    const char *test = getenv("HOS_PS5_LANG_ID");
-    if (test && *test) lang = atoi(test);
+    lang = env_int("HOS_PS5_LANG_ID", lang);
     if (id) *id = lang;
     if (lang < 0 || (size_t)lang >= sizeof codes / sizeof *codes) return NULL;
     return codes[lang];

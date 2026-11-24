@@ -30,6 +30,7 @@
 
 #include "win32_ps5.h"
 #include "zero_first.h"
+#include "../../gpu/vk/compat/longshot_env.h"   /* (env_int, env_on: the switches' one rule) */
 
 #undef dlopen
 #undef dlsym
@@ -138,8 +139,7 @@ static int zero_first_on(void) {
    the order as it was (HOS_PS5_ZERO_FIRST=0) it widens the time in which the game reaches the unit before its zeros, to
    see whether the stores lost there are what ends the game as a save loads; with the order on there is no such time */
 static void zero_wait(void) {
-    const char *e = getenv("HOS_PS5_ZERO_WAIT_US");
-    const int us = e ? atoi(e) : 0;
+    const int us = env_int("HOS_PS5_ZERO_WAIT_US", 0);
     if (us <= 0) return;
     const double until = now_ms() + us / 1000.0;
     while (now_ms() < until) {}
@@ -550,8 +550,8 @@ static void *thread_trampoline(void *p) {
 static size_t stack_cap(void) {
     static size_t cap;
     if (!cap) {
-        const char *e = getenv("HOS_PS5_STACK_MB");
-        cap = (size_t)(e && atoi(e) > 0 ? atoi(e) : 16) << 20;
+        const int mb = env_int("HOS_PS5_STACK_MB", 16);
+        cap = (size_t)(mb > 0 ? mb : 16) << 20;
     }
     return cap;
 }
@@ -718,8 +718,7 @@ static void *quit_watch(void *unused) {
     int restart_at = 0;
     for (int ticks = 0;; ticks++) {
         if (ticks == 4) {   /* (read 2 s in: this thread starts before longshot_env.txt and the run's switches are set) */
-            const char *t = getenv("HOS_PS5_TEST_RESTART");
-            restart_at = t && !hos_ps5_restarted ? atoi(t) : 0;
+            restart_at = hos_ps5_restarted ? 0 : env_int("HOS_PS5_TEST_RESTART", 0);
         }
         if (restart_at > 0 && ticks == restart_at * 2) hos_ps5_restart("HOS_PS5_TEST_RESTART");
         sceKernelUsleep(500000);

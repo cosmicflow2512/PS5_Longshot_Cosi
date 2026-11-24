@@ -18,6 +18,7 @@ import subprocess
 import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 NAMES = ('kGuestPagesBase', 'kGuestPagesBytes', 'kGuestPagesBase2', 'kGuestPagesBytes2')
+SHARED = ('kGuestPagesBase3', 'kGuestPagesBytes3')   # (Longshot v3.2.0's third window, NVN's virtual pools at 1 TB: both platforms')
 
 
 def layout(hos, ps5):
@@ -44,8 +45,10 @@ def shader_windows(emit, ps5):
     if opened >= 0 and '#endif' not in emit[opened:at] and '#else' in part:
         part = part.split('#else')[1 if ps5 else 0]
     got = {}
-    for name in NAMES:
-        m = re.search(r'constexpr unsigned long long %s = (0x[0-9a-fA-F]+|\d+)ull(?:\s*<<\s*(\d+))?;' % name, part)
+    whole = emit[at:emit.index('void EmitContext::DefineGlobalMemoryFunctions', at)]
+    for name in NAMES + SHARED:
+        m = re.search(r'constexpr unsigned long long %s = (0x[0-9a-fA-F]+|\d+)ull(?:\s*<<\s*(\d+))?;' % name,
+                      whole if name in SHARED else part)
         if not m:
             raise SystemExit('FAIL: spirv_emit_context.cpp: no %s for %s' % (name, 'the console' if ps5 else 'the PC'))
         got[name] = int(m.group(1), 0) << int(m.group(2) or 0)
@@ -60,16 +63,18 @@ using namespace mkwvk;
 #define CHECK(x) do { if (!(x)) { std::fprintf(stderr, "FAIL %d %s\n", __LINE__, #x); std::exit(1); } } while (0)
 int main() {
     const uint64_t heap = HEAP_BASE, end = SPACE_END;
-    CHECK(sizeof kPageWindows / sizeof kPageWindows[0] == 2);
+    CHECK(sizeof kPageWindows / sizeof kPageWindows[0] == 3);
     const PageWindow& a = kPageWindows[0];
     const PageWindow& b = kPageWindows[1];
+    const PageWindow& c = kPageWindows[2];   // (NVN's virtual pools from 1 TB, past the guest's space on both platforms)
     CHECK(a.base == heap);                    // (window one: from the heap's base)
     CHECK(b.base + b.bytes == end);           // (window two: up to the end of the guest's space)
     CHECK(a.base + a.bytes <= b.base);        // (apart)
     // (the shaders' own constants, which index the same table)
     CHECK(a.base == S_BASE && a.bytes == S_BYTES && b.base == S_BASE2 && b.bytes == S_BYTES2);
-    CHECK(a.first == 0 && b.first == a.bytes >> 12);
-    CHECK(kPageTableEntries == (a.bytes + b.bytes) >> 12);
+    CHECK(c.base == S_BASE3 && c.bytes == S_BYTES3 && c.base >= end);
+    CHECK(a.first == 0 && b.first == a.bytes >> 12 && c.first == (a.bytes + b.bytes) >> 12);
+    CHECK(kPageTableEntries == (a.bytes + b.bytes + c.bytes) >> 12);
     CHECK(page_table_outside(heap, heap + 0x1000) == 0);
     CHECK(page_table_outside(heap - 0x1000, heap) == 0x1000);
     CHECK(page_table_outside(end - 0x1000, end) == 0);
@@ -105,12 +110,13 @@ def main():
             exe = folder / ('fixture_ps5' if ps5 else 'fixture_pc')
             cmd = [a.cxx, '-std=c++20', '-Wall', '-Wextra', '-Werror', '-I' + str(vk), '-DHEAP_BASE=%dull' % heap,
                    '-DSPACE_END=%dull' % end, '-DS_BASE=%dull' % s['kGuestPagesBase'], '-DS_BYTES=%dull' % s['kGuestPagesBytes'],
-                   '-DS_BASE2=%dull' % s['kGuestPagesBase2'], '-DS_BYTES2=%dull' % s['kGuestPagesBytes2']]
+                   '-DS_BASE2=%dull' % s['kGuestPagesBase2'], '-DS_BYTES2=%dull' % s['kGuestPagesBytes2'],
+                   '-DS_BASE3=%dull' % s['kGuestPagesBase3'], '-DS_BYTES3=%dull' % s['kGuestPagesBytes3']]
             cmd += (['-D__PROSPERO__'] if ps5 else []) + [str(cpp), '-o', str(exe)]
             subprocess.run(cmd, cwd=folder, check=True)
             if subprocess.run([str(exe)]).returncode:
                 raise SystemExit('FAIL: %s: the page table\'s windows are not its guest layout (heap %#x, end %#x)' % (who, heap, end))
-            print('PASS: %s: the table maps the heap from %#x and the 4 GB below %#x' % (who, heap, end))
+            print('PASS: %s: the table maps the heap from %#x and the window below %#x' % (who, heap, end))
 
 
 if __name__ == '__main__':

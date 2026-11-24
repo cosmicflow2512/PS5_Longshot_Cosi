@@ -19,6 +19,7 @@
 #include "../hos.h"
 #include "../hos_sdl.h"
 #include "platform.h"
+#include "../../gpu/vk/compat/longshot_env.h"   /* (env_int, env_on: the switches' one rule) */
 
 PFN_vkVoidFunction vk_icdGetInstanceProcAddr(VkInstance instance, const char *name);   /* (RADV, linked in) */
 
@@ -81,6 +82,15 @@ int hos_sdl_desktop_size(int *width, int *height) {
 int hos_sdl_refresh_mhz(void *window) { (void)window; return mode_mhz; }
 void hos_sdl_pixel_size(void *window, int *width, int *height) { (void)window; *width = mode_w, *height = mode_h; }
 void hos_sdl_window_size(void *window, int *width, int *height) { (void)window; *width = mode_w, *height = mode_h; }
+/* (one display, the console's own, always the whole screen: nothing to list and no other to move to) */
+struct MkwVkMonitor;
+int hos_sdl_monitor_list(void *window, struct MkwVkMonitor *out, uint32_t *tokens, int cap) {
+    (void)window, (void)out, (void)tokens, (void)cap;
+    return 0;
+}
+uint32_t hos_sdl_window_display(void *window) { (void)window; return UINT32_MAX; }
+int hos_sdl_fullscreen_target(void *window, int on, uint32_t token) { (void)window, (void)on, (void)token; return 1; }
+int hos_sdl_is_fullscreen(void *window) { (void)window; return 1; }
 void hos_sdl_icon(void *window, const char *png) { (void)window, (void)png; }
 
 /* The plane surface of the display mode of the wanted size, 59.94 Hz where the display offers it (the modes come
@@ -118,7 +128,7 @@ int hos_sdl_vulkan_surface(void *window, void *instance_p, void *surface_out) {
         hos_log("ps5: display mode %ux%u at %u mHz", p->visibleRegion.width, p->visibleRegion.height, p->refreshRate);
         if ((int)p->visibleRegion.width != mode_w || (int)p->visibleRegion.height != mode_h) continue;
         /* (HOS_PS5_HZ=120: that size's 119.88 Hz mode where the screen has one, for made frames past 60 a second) */
-        const int fast = getenv("HOS_PS5_HZ") && atoi(getenv("HOS_PS5_HZ")) > 61;
+        const int fast = env_int("HOS_PS5_HZ", 0) > 61;
         const int is_fast = p->refreshRate >= 61000, has_fast = pick >= 0 && modes[pick].parameters.refreshRate >= 61000;
         if (pick < 0 || (fast ? is_fast && !has_fast : !is_fast && has_fast)) pick = (int)i;
     }
@@ -179,31 +189,43 @@ static void audio_fill(int16_t *frames, int count, void *user) {
             }
         }
 }
-/* (Longshot v3.0.0's hos_sdl.h: an output device chosen by token (UINT32_MAX the default), a handle, NULL when it does not
-   open, a close and an alive check. The console has one output: the handle is a token for it, alive while it plays) */
-static int audio_token, audio_open_now;
-void *hos_sdl_audio_open(unsigned device, int freq, int channels, int s16, void (*pull)(void *user, uint8_t *out, int len),
-                         void *user) {
-    (void)device;
+/* (one output, the console's: no device to choose, and its token is the stream's handle) */
+static int audio_token;
+void *hos_sdl_audio_open(unsigned device, int freq, int channels, int s16, int frames,
+                         void (*pull)(void *user, uint8_t *out, int len), void *user) {
+    (void)device, (void)frames;   /* (the block's size is the console's audio port's) */
     if (freq != 48000) hos_log("ps5: the game's sound is %d Hz, played as 48000", freq);
     if (channels < 1 || channels > 8) return NULL;
     audio_pull = pull, audio_user = user, audio_channels = channels, audio_s16 = s16;
-    if (!audio_start(audio_fill, NULL)) return NULL;
-    audio_open_now = 1;
-    return &audio_token;
+    return audio_start(audio_fill, NULL) ? &audio_token : NULL;
 }
-void hos_sdl_audio_close(void *audio) {
-    if (audio == &audio_token && audio_open_now) audio_stop(), audio_open_now = 0;
-}
-int hos_sdl_audio_alive(void *audio) { return audio == &audio_token && audio_open_now; }
-/* (the output devices: only the console's default one, which the menu names Default) */
+void hos_sdl_audio_close(void *audio) { if (audio) audio_stop(); }
+int hos_sdl_audio_alive(void *audio) { return audio != NULL; }
+int hos_sdl_audio_channels(void) { return 2; }
+/* (upstream v3.1.0's DualSense sound, fine haptics and HID writes, and a pad's transport and product: none through
+   this layer on the console, each answer the one that means so) */
+/* (the output devices' list: weak references in audio_output_devices.c until upstream v3.1.0, strong since. None to
+   choose on the console: no device listed, and a saved one resolves to none, the default) */
 int hos_sdl_output_count(void) { return 0; }
 int hos_sdl_output_info(int index, char *id, int id_capacity, char *name, int name_capacity) {
     (void)index, (void)id, (void)id_capacity, (void)name, (void)name_capacity;
     return 0;
 }
 int hos_sdl_output_resolve(const char *id) { (void)id; return -1; }
-int hos_sdl_audio_channels(void) { return 2; }
+int hos_sdl_output_channels(int index) { (void)index; return 0; }
+int hos_sdl_pad_audio_endpoint(void *pad) { (void)pad; return -1; }
+int hos_sdl_pad_headphones(void *pad) { (void)pad; return -1; }
+uint16_t hos_sdl_pad_product(void *pad) { (void)pad; return 0; }
+int hos_sdl_pad_wireless(void *pad) { (void)pad; return -1; }
+int hos_sdl_pad_rumble_triggers(void *pad, uint16_t left, uint16_t right, uint32_t ms) {
+    (void)pad, (void)left, (void)right, (void)ms;
+    return 0;
+}
+const char *hos_sdl_pad_path(void *pad) { (void)pad; return ""; }
+int hos_sdl_hid_can(void) { return 0; }
+void *hos_sdl_hid_open(const char *path) { (void)path; return NULL; }
+int hos_sdl_hid_write(void *hid, const void *data, int size) { (void)hid, (void)data, (void)size; return -1; }
+void hos_sdl_hid_close(void *hid) { (void)hid; }
 
 /* ---- microphones: none ---- */
 int hos_sdl_mic_list(uint32_t *ids, char (*names)[128], int max) { (void)ids, (void)names, (void)max; return 0; }
