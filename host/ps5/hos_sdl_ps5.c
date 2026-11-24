@@ -82,15 +82,6 @@ int hos_sdl_desktop_size(int *width, int *height) {
 int hos_sdl_refresh_mhz(void *window) { (void)window; return mode_mhz; }
 void hos_sdl_pixel_size(void *window, int *width, int *height) { (void)window; *width = mode_w, *height = mode_h; }
 void hos_sdl_window_size(void *window, int *width, int *height) { (void)window; *width = mode_w, *height = mode_h; }
-/* (one display, the console's own, always the whole screen: nothing to list and no other to move to) */
-struct MkwVkMonitor;
-int hos_sdl_monitor_list(void *window, struct MkwVkMonitor *out, uint32_t *tokens, int cap) {
-    (void)window, (void)out, (void)tokens, (void)cap;
-    return 0;
-}
-uint32_t hos_sdl_window_display(void *window) { (void)window; return UINT32_MAX; }
-int hos_sdl_fullscreen_target(void *window, int on, uint32_t token) { (void)window, (void)on, (void)token; return 1; }
-int hos_sdl_is_fullscreen(void *window) { (void)window; return 1; }
 void hos_sdl_icon(void *window, const char *png) { (void)window, (void)png; }
 
 /* The plane surface of the display mode of the wanted size, 59.94 Hz where the display offers it (the modes come
